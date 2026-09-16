@@ -1,0 +1,20 @@
+---
+import '../styles/global.css';
+import { App } from '../components/App';
+import RequiredB12HeadScripts from '../components/RequiredB12HeadScripts.astro';
+import RequiredB12FooterScripts from '../components/RequiredB12FooterScripts.astro';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AssetFlow - IT Asset Management</title>
+    <RequiredB12HeadScripts />
+  </head>
+  <body>
+    <App client:load />
+    <RequiredB12FooterScripts />
+  </body>
+</html>
