@@ -70,6 +70,10 @@ export interface AssetHistoryEvent {
   reason?: string;
   notes?: string;
   cost?: number;
+  entityType?: string;
+  source?: string;
+  beforeValue?: string;
+  afterValue?: string;
 }
 
 export interface Location {

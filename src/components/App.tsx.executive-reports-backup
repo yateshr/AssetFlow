@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { 
   LayoutDashboard, 
   BarChart3,
@@ -113,17 +113,7 @@ export function App() {
           }}
         />;
       case 'reports':
-        return (
-          <ReportsPage
-            assetsList={assetsList}
-            usersList={usersList}
-            assignmentsList={assignmentsList}
-            invoicesList={invoicesList}
-            vendorsList={vendorsList}
-            locationsList={locationsList}
-            departmentsList={departmentsList}
-          />
-        );
+        return <ReportsPage />;
       case 'operations':
         return (
           <OperationsPage
@@ -385,4 +375,3 @@ export function App() {
     </div>
   );
 }
-

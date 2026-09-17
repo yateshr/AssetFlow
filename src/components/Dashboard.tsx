@@ -14,10 +14,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
-  assets, 
-  users, 
+  assets as sampleAssets, 
+  users as sampleUsers, 
   locations, 
-  assignments, 
+  assignments as sampleAssignments, 
   auditLogs,
   itCallLogs,
   softwareLicenses,
@@ -25,16 +25,24 @@ import {
   formatDate, 
   formatDateTime,
   formatCurrency,
-  type AssetStatus 
+  type AssetStatus,
+  type AssetType 
 } from '@/data/sampleData';
 import type { Page } from './App';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
   onNavigate: (page: Page) => void;
+  assetsList?: typeof sampleAssets;
+  usersList?: typeof sampleUsers;
+  assignmentsList?: typeof sampleAssignments;
+  onAssetDrilldown?: (filter: { status?: AssetStatus; warranty?: 'expired'|'30'|'60'|'90'; type?: typeof sampleAssets[number]['type'] }) => void;
 }
 
-export function Dashboard({ onNavigate }: DashboardProps) {
+export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = sampleUsers, assignmentsList = sampleAssignments, onAssetDrilldown }: DashboardProps) {
+  const assets = assetsList;
+  const users = usersList;
+  const assignments = assignmentsList;
   const totalAssets = assets.length;
   const assignedAssets = assets.filter(a => a.status === 'assigned').length;
   const availableAssets = assets.filter(a => a.status === 'available').length;
@@ -102,7 +110,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
+        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({})}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Assets</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
@@ -115,7 +123,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({ status: 'assigned' })}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Assigned</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -141,7 +149,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({ status: 'maintenance' })}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">In Maintenance</CardTitle>
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
@@ -184,12 +192,15 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               </ResponsiveContainer>
             </div>
             <div className="flex flex-wrap gap-4 justify-center mt-2">
-              {statusData.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-xs text-muted-foreground">{item.name} ({item.value})</span>
-                </div>
-              ))}
+              {statusData.map((item) => {
+                const status = item.name.toLowerCase() === 'maintenance' ? 'maintenance' : item.name.toLowerCase() as AssetStatus;
+                return (
+                  <button type="button" key={item.name} className="flex items-center gap-2 hover:opacity-70" onClick={() => onAssetDrilldown?.({ status })}>
+                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span className="text-xs text-muted-foreground">{item.name} ({item.value})</span>
+                  </button>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -197,7 +208,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         {/* Asset Types */}
         <Card>
           <CardHeader>
-            <CardTitle>Assets by Type</CardTitle>
+            <CardTitle>Assets by Type</CardTitle><p className="text-xs text-muted-foreground">Use the asset filters for type drill-down.</p>
           </CardHeader>
           <CardContent>
             <div className="h-[250px]">
@@ -208,8 +219,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" width={80} />
                   <Tooltip />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                    {typeData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={typeColors[index % typeColors.length]} />
+                    {typeData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={typeColors[index % typeColors.length]}
+                        onClick={() => onAssetDrilldown?.({ type: entry.name as AssetType })}
+                        cursor="pointer"
+                      />
                     ))}
                   </Bar>
                 </BarChart>
@@ -222,7 +238,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       {/* Alerts & Activity Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Warranty Alerts */}
-        <Card>
+        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({ warranty: '90' })}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-destructive" />
