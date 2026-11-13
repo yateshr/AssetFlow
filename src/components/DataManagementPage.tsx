@@ -31,9 +31,9 @@ export function DataManagementPage({ onResetDemoData, onClearFeatureData }: Prop
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Demo & Data Management</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Demo & Data Management</h1>
         <p className="text-muted-foreground">Reset local demo data and manage browser-stored AssetFlow feature data.</p>
       </div>
 

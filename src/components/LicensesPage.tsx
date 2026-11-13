@@ -42,11 +42,11 @@ export function LicensesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Software Licenses</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Software Licenses</h1>
           <p className="text-muted-foreground">Manage software licenses and subscriptions</p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
@@ -57,46 +57,46 @@ export function LicensesPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
               <Key className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{licensesList.length}</p>
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">{licensesList.length}</p>
               <p className="text-sm text-muted-foreground">Total Licenses</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-chart-2/10 flex items-center justify-center">
               <Users className="h-6 w-6 text-chart-2" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{avgUtilization}%</p>
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">{avgUtilization}%</p>
               <p className="text-sm text-muted-foreground">Avg. Utilization</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-chart-3/10 flex items-center justify-center">
               <DollarSign className="h-6 w-6 text-chart-3" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(totalCost)}</p>
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">{formatCurrency(totalCost)}</p>
               <p className="text-sm text-muted-foreground">Total Cost</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-chart-5/10 flex items-center justify-center">
               <Calendar className="h-6 w-6 text-chart-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                 {licensesList.filter(l => {
                   const expiry = new Date(l.expiryDate);
                   const now = new Date();
@@ -127,7 +127,7 @@ export function LicensesPage() {
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Types</option>
               <option value="subscription">Subscription</option>
@@ -324,7 +324,7 @@ function LicenseForm({ license, onSubmit, onCancel }: {
           <select
             value={formData.type}
             onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="subscription">Subscription</option>
             <option value="perpetual">Perpetual</option>

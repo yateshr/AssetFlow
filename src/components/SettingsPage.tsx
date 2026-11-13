@@ -195,10 +195,10 @@ export function SettingsPage({}: SettingsPageProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Settings</h1>
         <p className="text-muted-foreground">Manage system configuration and integrations</p>
       </div>
 
@@ -230,7 +230,7 @@ export function SettingsPage({}: SettingsPageProps) {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Timezone</label>
-                  <select className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
+                  <select className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm">
                     <option>America/New_York</option>
                     <option>America/Chicago</option>
                     <option>America/Denver</option>
@@ -242,7 +242,7 @@ export function SettingsPage({}: SettingsPageProps) {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Date Format</label>
-                  <select className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
+                  <select className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm">
                     <option>MM/DD/YYYY</option>
                     <option>DD/MM/YYYY</option>
                     <option>YYYY-MM-DD</option>
@@ -459,7 +459,7 @@ export function SettingsPage({}: SettingsPageProps) {
                     <p className="font-medium text-foreground">Session Timeout</p>
                     <p className="text-sm text-muted-foreground">Auto-logout after inactivity</p>
                   </div>
-                  <select className="px-3 py-1 border border-input rounded-md bg-background text-sm">
+                  <select className="px-3 py-1 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm">
                     <option>15 minutes</option>
                     <option>30 minutes</option>
                     <option>1 hour</option>

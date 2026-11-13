@@ -17,7 +17,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  itCallLogs as initialCallLogs,
   formatDate,
   formatTitle,
   type User,
@@ -35,10 +34,11 @@ const categories: Array<ItCallCategory | 'all'> = ['all', 'hardware', 'software'
 interface CallLogsPageProps {
   usersList: User[];
   departmentsList: string[];
+  callLogs: ItCallLog[];
+  onCallLogsChange: (callLogs: ItCallLog[]) => void;
 }
 
-export function CallLogsPage({ usersList, departmentsList }: CallLogsPageProps) {
-  const [callLogs, setCallLogs] = useState<ItCallLog[]>(initialCallLogs);
+export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsChange }: CallLogsPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState<ItCallStatus | 'all'>('all');
@@ -72,7 +72,7 @@ export function CallLogsPage({ usersList, departmentsList }: CallLogsPageProps) 
 
   const handleDelete = (id: string) => {
     if (confirm('Delete this call log entry?')) {
-      setCallLogs(callLogs.filter(call => call.id !== id));
+      onCallLogsChange(callLogs.filter(call => call.id !== id));
     }
   };
 
@@ -117,10 +117,10 @@ export function CallLogsPage({ usersList, departmentsList }: CallLogsPageProps) 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">IT Call Logbook</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">IT Call Logbook</h1>
           <p className="text-muted-foreground">Track daily support calls, issues, ownership, and resolutions</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -272,9 +272,9 @@ export function CallLogsPage({ usersList, departmentsList }: CallLogsPageProps) 
             }}
             onSubmit={(data) => {
               if (editingCall) {
-                setCallLogs(callLogs.map(call => call.id === editingCall.id ? { ...call, ...data } : call));
+                onCallLogsChange(callLogs.map(call => call.id === editingCall.id ? { ...call, ...data } : call));
               } else {
-                setCallLogs([
+                onCallLogsChange([
                   {
                     id: `CALL-${String(callLogs.length + 1).padStart(3, '0')}`,
                     ...data

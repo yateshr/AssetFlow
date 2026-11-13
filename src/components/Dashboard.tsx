@@ -13,7 +13,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
+import { CountUp } from '@/components/ui/count-up';
+import {
   assets as sampleAssets, 
   users as sampleUsers, 
   locations, 
@@ -100,71 +101,65 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
   // Recent activity
   const recentActivity = auditLogs.slice(0, 5);
 
+  const tooltipStyle = {
+    contentStyle: {
+      background: 'var(--popover)',
+      border: '1px solid var(--border)',
+      borderRadius: 12,
+      boxShadow: 'var(--shadow-lift)',
+      fontSize: 12,
+      padding: '8px 12px',
+    },
+    itemStyle: { color: 'var(--popover-foreground)' },
+    cursor: { fill: 'color-mix(in oklch, var(--primary) 8%, transparent)' },
+  };
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const statCards = [
+    { label: 'Total Assets', value: totalAssets, icon: Package, tone: 'chart-1', note: <><span className="text-chart-2 font-semibold">+3</span> added this month</>, onClick: () => onAssetDrilldown?.({}) },
+    { label: 'Assigned', value: assignedAssets, icon: Users, tone: 'chart-2', note: <>{activeAssignments} active assignments</>, onClick: () => onAssetDrilldown?.({ status: 'assigned' }) },
+    { label: "Today's IT Calls", value: todaysCalls, icon: Headphones, tone: 'chart-4', note: <>{openCalls} open or in progress</>, onClick: () => onNavigate('call-logs') },
+    { label: 'In Maintenance', value: maintenanceAssets, icon: AlertTriangle, tone: 'chart-3', note: <>{maintenanceRecords.filter(m => m.status === 'in-progress').length} in progress</>, onClick: () => onAssetDrilldown?.({ status: 'maintenance' }) },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-primary">{greeting} 👋</p>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
         <p className="text-muted-foreground">Overview of your IT asset management system</p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({})}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Assets</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">{totalAssets}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              <span className="text-chart-2 font-medium">+3</span> added this month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({ status: 'assigned' })}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Assigned</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">{assignedAssets}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {activeAssignments} active assignments
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate('call-logs')}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today's IT Calls</CardTitle>
-            <Headphones className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">{todaysCalls}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {openCalls} open or in progress
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({ status: 'maintenance' })}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">In Maintenance</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">{maintenanceAssets}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {maintenanceRecords.filter(m => m.status === 'in-progress').length} in progress
-            </p>
-          </CardContent>
-        </Card>
+      <div className="af-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {statCards.map(({ label, value, icon: Icon, tone, note, onClick }) => (
+          <Card key={label} className="af-lift group relative cursor-pointer overflow-hidden" onClick={onClick}>
+            <div
+              className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full opacity-[0.12] blur-2xl transition-opacity duration-500 group-hover:opacity-30"
+              style={{ background: `var(--${tone})` }}
+            />
+            <CardHeader className="flex flex-row items-center justify-between pb-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+              <div
+                className="h-10 w-10 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
+                style={{ background: `color-mix(in oklch, var(--${tone}) 16%, transparent)`, color: `var(--${tone})` }}
+              >
+                <Icon className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-4xl font-bold tracking-tight text-foreground"><CountUp value={value} /></div>
+              <p className="text-xs text-muted-foreground mt-2">{note}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="af-stagger grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Asset Status Distribution */}
         <Card>
           <CardHeader>
@@ -180,14 +175,14 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
                     cy="50%"
                     innerRadius={60}
                     outerRadius={90}
-                    paddingAngle={2}
+                    paddingAngle={3} cornerRadius={6} stroke="var(--card)" strokeWidth={2}
                     dataKey="value"
                   >
                     {statusData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip {...tooltipStyle} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -214,11 +209,11 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={typeData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" width={80} />
-                  <Tooltip />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  <Tooltip {...tooltipStyle} />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={18}>
                     {typeData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
@@ -236,9 +231,9 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
       </div>
 
       {/* Alerts & Activity Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="af-stagger grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Warranty Alerts */}
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onAssetDrilldown?.({ warranty: '90' })}>
+        <Card className="af-lift cursor-pointer" onClick={() => onAssetDrilldown?.({ warranty: '90' })}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-destructive" />
@@ -294,7 +289,7 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div 
-                      className={`h-full rounded-full transition-all ${
+                      className={`af-bar h-full rounded-full transition-all ${
                         license.utilization > 90 ? 'bg-destructive' : 
                         license.utilization > 70 ? 'bg-chart-5' : 'bg-primary'
                       }`}
@@ -356,10 +351,10 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate('users')}>
+      <div className="af-stagger grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        <Card className="af-lift cursor-pointer" onClick={() => onNavigate('users')}>
           <CardContent className="flex items-center gap-4 py-4">
-            <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
               <Users className="h-6 w-6 text-primary" />
             </div>
             <div>
@@ -368,9 +363,9 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
             </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate('locations')}>
+        <Card className="af-lift cursor-pointer" onClick={() => onNavigate('locations')}>
           <CardContent className="flex items-center gap-4 py-4">
-            <div className="h-12 w-12 rounded-lg bg-chart-2/10 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-xl bg-chart-2/10 flex items-center justify-center">
               <MapPin className="h-6 w-6 text-chart-2" />
             </div>
             <div>
@@ -379,9 +374,9 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
             </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate('licenses')}>
+        <Card className="af-lift cursor-pointer" onClick={() => onNavigate('licenses')}>
           <CardContent className="flex items-center gap-4 py-4">
-            <div className="h-12 w-12 rounded-lg bg-chart-3/10 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-xl bg-chart-3/10 flex items-center justify-center">
               <Package className="h-6 w-6 text-chart-3" />
             </div>
             <div>
@@ -390,9 +385,9 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
             </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate('reports')}>
+        <Card className="af-lift cursor-pointer" onClick={() => onNavigate('reports')}>
           <CardContent className="flex items-center gap-4 py-4">
-            <div className="h-12 w-12 rounded-lg bg-chart-4/10 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-xl bg-chart-4/10 flex items-center justify-center">
               <BarChart3 className="h-6 w-6 text-chart-4" />
             </div>
             <div>

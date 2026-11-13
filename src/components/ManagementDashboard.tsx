@@ -41,10 +41,10 @@ export function ManagementDashboard({ assets, users, onNavigate }: ManagementDas
     ['Warranty ≤90d', warranty90, ShieldAlert],
   ] as const;
 
-  return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold">Management Dashboard</h1><p className="text-muted-foreground">Live operational view of assets, people, warranty risk and lifecycle status.</p></div>
+  return <div className="af-stagger space-y-6">
+    <div><h1 className="text-3xl font-bold tracking-tight">Management Dashboard</h1><p className="text-muted-foreground">Live operational view of assets, people, warranty risk and lifecycle status.</p></div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map(([label, value, Icon]) => <Card key={label}><CardContent className="p-4"><div className="flex justify-between items-start"><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><Icon className="h-5 w-5 text-muted-foreground" /></div></CardContent></Card>)}
+      {cards.map(([label, value, Icon]) => <Card key={label} className="af-lift"><CardContent className="p-4"><div className="flex justify-between items-start"><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><Icon className="h-5 w-5 text-muted-foreground" /></div></CardContent></Card>)}
     </div>
 
     <div className="grid lg:grid-cols-3 gap-4">
@@ -79,5 +79,5 @@ function Health({ label, value }: { label: string; value: number }) {
   return <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">{label}</span><Badge variant={label === 'Lost' && value ? 'destructive' : 'outline'}>{value}</Badge></div>;
 }
 function AlertCard({ icon: Icon, label, value, onClick }: { icon: typeof ShieldAlert; label: string; value: number; onClick: () => void }) {
-  return <button onClick={onClick} className="rounded-lg border p-4 text-left hover:bg-muted transition-colors"><div className="flex items-center gap-2"><Icon className="h-4 w-4" /><span className="text-sm font-medium">{label}</span></div><p className="text-2xl font-bold mt-2">{value}</p><p className="text-xs text-muted-foreground">Open related module →</p></button>;
+  return <button onClick={onClick} className="rounded-xl border bg-card p-4 text-left af-lift"><div className="flex items-center gap-2"><Icon className="h-4 w-4" /><span className="text-sm font-medium">{label}</span></div><p className="text-2xl font-bold mt-2">{value}</p><p className="text-xs text-muted-foreground">Open related module →</p></button>;
 }

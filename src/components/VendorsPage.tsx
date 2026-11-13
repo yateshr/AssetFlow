@@ -61,11 +61,11 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Vendors</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Vendors</h1>
           <p className="text-muted-foreground">Manage suppliers and service providers</p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
@@ -91,7 +91,7 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Categories</option>
               {categories.map(cat => (

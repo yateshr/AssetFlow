@@ -119,10 +119,10 @@ export function DepartmentsPage({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Departments</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Departments</h1>
           <p className="text-muted-foreground">
             Manage the department choices used when adding users and logging IT calls
           </p>

@@ -274,11 +274,11 @@ export function AssetsPage({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Assets</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Assets</h1>
           <p className="text-muted-foreground">Manage your IT assets and inventory</p>
         </div>
         <div className="flex gap-2">
@@ -299,19 +299,19 @@ export function AssetsPage({
 
       {/* Warranty Overview */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <button type="button" onClick={() => setWarrantyFilter('expired')} className="text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors">
+        <button type="button" onClick={() => setWarrantyFilter('expired')} className="text-left rounded-xl border bg-card p-3 af-lift">
           <div className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-4 w-4" /><span className="text-xs font-medium">Expired</span></div>
           <p className="mt-1 text-xl font-semibold">{warrantyCounts.expired}</p>
         </button>
-        <button type="button" onClick={() => setWarrantyFilter('30')} className="text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors">
+        <button type="button" onClick={() => setWarrantyFilter('30')} className="text-left rounded-xl border bg-card p-3 af-lift">
           <div className="flex items-center gap-2 text-chart-5"><ShieldAlert className="h-4 w-4" /><span className="text-xs font-medium">Next 30 Days</span></div>
           <p className="mt-1 text-xl font-semibold">{warrantyCounts.next30}</p>
         </button>
-        <button type="button" onClick={() => setWarrantyFilter('60')} className="text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors">
+        <button type="button" onClick={() => setWarrantyFilter('60')} className="text-left rounded-xl border bg-card p-3 af-lift">
           <div className="flex items-center gap-2 text-primary"><ShieldAlert className="h-4 w-4" /><span className="text-xs font-medium">Next 60 Days</span></div>
           <p className="mt-1 text-xl font-semibold">{warrantyCounts.next60}</p>
         </button>
-        <button type="button" onClick={() => setWarrantyFilter('90')} className="text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors">
+        <button type="button" onClick={() => setWarrantyFilter('90')} className="text-left rounded-xl border bg-card p-3 af-lift">
           <div className="flex items-center gap-2 text-chart-2"><CheckCircle2 className="h-4 w-4" /><span className="text-xs font-medium">Next 90 Days</span></div>
           <p className="mt-1 text-xl font-semibold">{warrantyCounts.next90}</p>
         </button>
@@ -334,7 +334,7 @@ export function AssetsPage({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as AssetStatus | 'all')}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Status</option>
               <option value="available">Available</option>
@@ -345,7 +345,7 @@ export function AssetsPage({
             <select
               value={warrantyFilter}
               onChange={(e) => setWarrantyFilter(e.target.value as 'all' | 'expired' | '30' | '60' | '90')}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Warranty</option>
               <option value="expired">Expired ({warrantyCounts.expired})</option>
@@ -356,7 +356,7 @@ export function AssetsPage({
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as AssetType | 'all')}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Types</option>
               <option value="laptop">Laptop</option>
@@ -371,7 +371,7 @@ export function AssetsPage({
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Locations</option>
               {locationsList.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
@@ -379,7 +379,7 @@ export function AssetsPage({
             <select
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Departments</option>
               {departments.map(department => <option key={department} value={department}>{department}</option>)}
@@ -634,8 +634,8 @@ export function AssetsPage({
                     timestamp: new Date().toISOString(),
                     action: 'Updated',
                     performedBy: currentUser.id,
-                    from: JSON.stringify({ name: previous.name, type: previous.type, manufacturer: previous.manufacturer, model: previous.model, serialNumber: previous.serialNumber, assetTag: previous.assetTag, purchaseDate: previous.purchaseDate, purchasePrice: previous.purchasePrice, warrantyExpiry: previous.warrantyExpiry, location: previous.location, notes: previous.notes }),
-                    to: JSON.stringify({ name: normalizedData.name, type: normalizedData.type, manufacturer: normalizedData.manufacturer, model: normalizedData.model, serialNumber: normalizedData.serialNumber, assetTag: normalizedData.assetTag, purchaseDate: normalizedData.purchaseDate, purchasePrice: normalizedData.purchasePrice, warrantyExpiry: normalizedData.warrantyExpiry, location: normalizedData.location, notes: normalizedData.notes }),
+                    from: JSON.stringify({ name: previous.name, type: previous.type, manufacturer: previous.manufacturer, model: previous.model, serialNumber: previous.serialNumber, assetTag: previous.assetTag, purchaseDate: previous.purchaseDate, purchasePrice: previous.purchasePrice, warrantyExpiry: previous.warrantyExpiry, condition: previous.condition, accessories: previous.accessories, amcProvider: previous.amcProvider, amcExpiry: previous.amcExpiry, insuranceProvider: previous.insuranceProvider, insuranceExpiry: previous.insuranceExpiry, location: previous.location, notes: previous.notes }),
+                    to: JSON.stringify({ name: normalizedData.name, type: normalizedData.type, manufacturer: normalizedData.manufacturer, model: normalizedData.model, serialNumber: normalizedData.serialNumber, assetTag: normalizedData.assetTag, purchaseDate: normalizedData.purchaseDate, purchasePrice: normalizedData.purchasePrice, warrantyExpiry: normalizedData.warrantyExpiry, condition: normalizedData.condition, accessories: normalizedData.accessories, amcProvider: normalizedData.amcProvider, amcExpiry: normalizedData.amcExpiry, insuranceProvider: normalizedData.insuranceProvider, insuranceExpiry: normalizedData.insuranceExpiry, location: normalizedData.location, notes: normalizedData.notes }),
                     reason: 'Asset details updated.',
                     source: 'assets',
                     entityType: 'Asset',
@@ -820,6 +820,12 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
     purchaseDate: asset?.purchaseDate || new Date().toISOString().split('T')[0],
     purchasePrice: asset?.purchasePrice || 0,
     warrantyExpiry: asset?.warrantyExpiry || '',
+    condition: asset?.condition || 'good',
+    accessories: asset?.accessories || '',
+    amcProvider: asset?.amcProvider || '',
+    amcExpiry: asset?.amcExpiry || '',
+    insuranceProvider: asset?.insuranceProvider || '',
+    insuranceExpiry: asset?.insuranceExpiry || '',
     location: asset?.location || '',
     assignedTo: asset?.assignedTo || '',
     notes: asset?.notes || ''
@@ -945,7 +951,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
           <select
             value={formData.type}
             onChange={(e) => setFormData({ ...formData, type: e.target.value as AssetType })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="laptop">Laptop</option>
             <option value="desktop">Desktop</option>
@@ -969,7 +975,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
                 assignedTo: status === 'assigned' ? formData.assignedTo : ''
               });
             }}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="available">Available</option>
             <option value="assigned">Assigned</option>
@@ -1011,7 +1017,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
           <select
             value={formData.location}
             onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="">Select location</option>
             {locationsList.map(loc => (
@@ -1031,7 +1037,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
                 status: assignedTo ? 'assigned' : formData.status === 'assigned' ? 'available' : formData.status
               });
             }}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="">Unassigned</option>
             {usersList.filter(user => user.status !== 'left').map(user => (
@@ -1072,10 +1078,47 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
             onChange={(e) => setFormData({ ...formData, warrantyExpiry: e.target.value })}
           />
         </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Current Condition</label>
+          <select
+            value={formData.condition || 'good'}
+            onChange={(e) => setFormData({ ...formData, condition: e.target.value as Asset['condition'] })}
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
+          >
+            <option value="new">New</option>
+            <option value="good">Good</option>
+            <option value="fair">Fair</option>
+            <option value="damaged">Damaged</option>
+          </select>
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <label className="text-sm font-medium">Accessories / Handover Items</label>
+          <Input
+            value={formData.accessories || ''}
+            onChange={(e) => setFormData({ ...formData, accessories: e.target.value })}
+            placeholder="Charger, dock, bag, keyboard, adapter..."
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">AMC Provider</label>
+          <Input value={formData.amcProvider || ''} onChange={(e) => setFormData({ ...formData, amcProvider: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">AMC Expiry</label>
+          <Input type="date" value={formData.amcExpiry || ''} onChange={(e) => setFormData({ ...formData, amcExpiry: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Insurance Provider</label>
+          <Input value={formData.insuranceProvider || ''} onChange={(e) => setFormData({ ...formData, insuranceProvider: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Insurance Expiry</label>
+          <Input type="date" value={formData.insuranceExpiry || ''} onChange={(e) => setFormData({ ...formData, insuranceExpiry: e.target.value })} />
+        </div>
         <div className="space-y-2 sm:col-span-2">
           <label className="text-sm font-medium">Notes</label>
           <textarea
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm min-h-[80px]"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm min-h-[80px]"
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           />
@@ -1139,6 +1182,22 @@ function AssetDetail({ asset, usersList, locationsList }: { asset: Asset; usersL
         <div>
           <p className="text-sm font-medium text-muted-foreground">Warranty Expiry</p>
           <p className="text-sm text-foreground">{formatDate(asset.warrantyExpiry)}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Condition</p>
+          <p className="text-sm capitalize text-foreground">{asset.condition || 'Not recorded'}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Accessories</p>
+          <p className="text-sm text-foreground">{asset.accessories || 'None recorded'}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">AMC</p>
+          <p className="text-sm text-foreground">{asset.amcProvider || 'Not covered'}{asset.amcExpiry ? ` • ${formatDate(asset.amcExpiry)}` : ''}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Insurance</p>
+          <p className="text-sm text-foreground">{asset.insuranceProvider || 'Not covered'}{asset.insuranceExpiry ? ` • ${formatDate(asset.insuranceExpiry)}` : ''}</p>
         </div>
         <div>
           <p className="text-sm font-medium text-muted-foreground">Custody</p>

@@ -58,11 +58,11 @@ export function LocationsPage({ locationsList, onLocationsChange }: LocationsPag
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Locations</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Locations</h1>
           <p className="text-muted-foreground">Manage office locations and facilities</p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
@@ -88,7 +88,7 @@ export function LocationsPage({ locationsList, onLocationsChange }: LocationsPag
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Types</option>
               <option value="office">Office</option>
@@ -242,7 +242,7 @@ function LocationForm({ location, onSubmit, onCancel }: {
           <select
             value={formData.type}
             onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="office">Office</option>
             <option value="warehouse">Warehouse</option>

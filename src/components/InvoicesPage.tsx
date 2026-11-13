@@ -156,9 +156,9 @@ export function InvoicesPage({
     setPaymentInvoice(null);
   };
 
-  return <div className="space-y-6">
+  return <div className="af-stagger space-y-6">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div><h1 className="text-2xl font-bold">Invoices</h1><p className="text-muted-foreground">Record vendor invoices and link received items to assets.</p></div>
+      <div><h1 className="text-3xl font-bold tracking-tight">Invoices</h1><p className="text-muted-foreground">Record vendor invoices and link received items to assets.</p></div>
       <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-2"/>Add Invoice</Button>
     </div>
     <Card><CardContent className="py-4"><div className="flex flex-col gap-3 sm:flex-row">

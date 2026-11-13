@@ -131,11 +131,11 @@ export function AssignmentsPage({
   const activeUsers = usersList.filter(user => user.status === 'active');
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Assignments</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Assignments</h1>
           <p className="text-muted-foreground">Track asset check-out and check-in to employees</p>
         </div>
         <Button onClick={() => setShowAssignModal(true)}>
@@ -146,39 +146,39 @@ export function AssignmentsPage({
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-chart-2/10 flex items-center justify-center">
               <CheckCircle className="h-6 w-6 text-chart-2" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                 {assignmentsList.filter(a => a.status === 'active').length}
               </p>
               <p className="text-sm text-muted-foreground">Active Assignments</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
               <XCircle className="h-6 w-6 text-muted-foreground" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                 {assignmentsList.filter(a => a.status === 'returned').length}
               </p>
               <p className="text-sm text-muted-foreground">Returned</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-chart-5/10 flex items-center justify-center">
               <Clock className="h-6 w-6 text-chart-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                 {assignmentsList.filter(a => a.status === 'pending').length}
               </p>
               <p className="text-sm text-muted-foreground">Pending</p>
@@ -204,7 +204,7 @@ export function AssignmentsPage({
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as AssignmentStatus | 'all')}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
@@ -379,7 +379,7 @@ function ReturnForm({
         <select
           value={condition}
           onChange={(e) => setCondition(e.target.value as 'good' | 'fair' | 'damaged' | 'missing')}
-          className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+          className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
         >
           <option value="good">Good — return to available inventory</option>
           <option value="fair">Fair — return to available inventory</option>
@@ -391,7 +391,7 @@ function ReturnForm({
       <div className="space-y-2">
         <label className="text-sm font-medium">Return Notes</label>
         <textarea
-          className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm min-h-[90px]"
+          className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm min-h-[90px]"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Condition details, missing accessories, damage, remarks..."
@@ -451,7 +451,7 @@ function AssignForm({
         <select
           value={selectedAsset}
           onChange={(e) => setSelectedAsset(e.target.value)}
-          className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+          className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           required
         >
           <option value="">Choose an asset...</option>
@@ -467,7 +467,7 @@ function AssignForm({
         <select
           value={selectedUser}
           onChange={(e) => setSelectedUser(e.target.value)}
-          className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+          className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           required
         >
           <option value="">Choose a user...</option>
@@ -484,7 +484,7 @@ function AssignForm({
           <select
             value={condition}
             onChange={(e) => setCondition(e.target.value as 'new' | 'good' | 'fair')}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="new">New</option>
             <option value="good">Good</option>
@@ -503,7 +503,7 @@ function AssignForm({
       <div className="space-y-2">
         <label className="text-sm font-medium">Notes (optional)</label>
         <textarea
-          className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm min-h-[80px]"
+          className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm min-h-[80px]"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Add any notes about this assignment..."

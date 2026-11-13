@@ -37,9 +37,11 @@ import {
   formatDate,
   formatTitle,
   type Asset,
+  type AssetHistoryEvent,
   type Assignment,
   type Invoice,
   type Location,
+  type ItCallLog,
   type User,
   type Vendor,
 } from '@/data/sampleData';
@@ -54,6 +56,8 @@ interface ReportsPageProps {
   vendorsList: Vendor[];
   locationsList: Location[];
   departmentsList: string[];
+  callLogsList: ItCallLog[];
+  history: AssetHistoryEvent[];
 }
 
 const chartColors = [
@@ -72,6 +76,8 @@ export function ReportsPage({
   vendorsList,
   locationsList,
   departmentsList,
+  callLogsList,
+  history,
 }: ReportsPageProps) {
   const [period, setPeriod] = useState<Period>('year');
   const [customFrom, setCustomFrom] = useState('');
@@ -131,6 +137,13 @@ export function ReportsPage({
 
   const periodAssets = filteredAssets.filter((asset) => inPeriod(asset.purchaseDate));
   const periodInvoices = invoicesList.filter((invoice) => inPeriod(invoice.invoiceDate));
+  const periodCalls = callLogsList.filter((call) =>
+    inPeriod(call.date) && (departmentFilter === 'all' || call.department === departmentFilter)
+  );
+  const scopedAssetIds = new Set(filteredAssets.map((asset) => asset.id));
+  const periodHistory = history.filter((event) =>
+    scopedAssetIds.has(event.assetId) && inPeriod(event.timestamp.slice(0, 10))
+  );
 
   const totalValue = filteredAssets.reduce((sum, asset) => sum + asset.purchasePrice, 0);
   const periodSpend = periodInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
@@ -155,6 +168,9 @@ export function ReportsPage({
   const activeAssignments = assignmentsList.filter((a) => a.status === 'active').length;
   const pendingAssignments = assignmentsList.filter((a) => a.status === 'pending').length;
   const activeUsers = usersList.filter((u) => u.status === 'active').length;
+  const openCalls = periodCalls.filter((call) => call.status === 'open' || call.status === 'in-progress').length;
+  const resolvedCalls = periodCalls.filter((call) => call.status === 'resolved' || call.status === 'closed').length;
+  const callResolutionRate = periodCalls.length ? Math.round((resolvedCalls / periodCalls.length) * 100) : 0;
 
   const statusRows = [
     { name: 'Assigned', value: assignedCount },
@@ -226,6 +242,38 @@ export function ReportsPage({
       }));
   }, [periodInvoices]);
 
+  const callCategoryRows = Object.entries(
+    periodCalls.reduce<Record<string, number>>((acc, call) => {
+      acc[formatTitle(call.category)] = (acc[formatTitle(call.category)] || 0) + 1;
+      return acc;
+    }, {})
+  ).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+  const lifecycleRows = Object.entries(
+    periodHistory.reduce<Record<string, number>>((acc, event) => {
+      acc[event.action] = (acc[event.action] || 0) + 1;
+      return acc;
+    }, {})
+  ).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+
+  const warrantyForecast = Object.entries(
+    filteredAssets.reduce<Record<string, number>>((acc, asset) => {
+      const expiry = new Date(`${asset.warrantyExpiry}T00:00:00`);
+      const months = (expiry.getFullYear() - today.getFullYear()) * 12 + expiry.getMonth() - today.getMonth();
+      if (Number.isFinite(expiry.getTime()) && months >= 0 && months < 12) {
+        const key = asset.warrantyExpiry.slice(0, 7);
+        acc[key] = (acc[key] || 0) + 1;
+      }
+      return acc;
+    }, {})
+  ).sort(([a], [b]) => a.localeCompare(b)).map(([month, value]) => ({
+    month: new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+    value,
+  }));
+
+  const amcExpiring = filteredAssets.filter((asset) => asset.amcExpiry && new Date(asset.amcExpiry) >= today && new Date(asset.amcExpiry).getTime() <= today.getTime() + 90 * 86400000);
+  const insuranceExpiring = filteredAssets.filter((asset) => asset.insuranceExpiry && new Date(asset.insuranceExpiry) >= today && new Date(asset.insuranceExpiry).getTime() <= today.getTime() + 90 * 86400000);
+
   const periodLabel =
     period === 'all'
       ? 'All available data'
@@ -260,6 +308,12 @@ export function ReportsPage({
               ['Expired warranties', warrantyExpired.length],
               ['Assets under maintenance', maintenanceCount],
               ['Lost assets', lostCount],
+              ['IT calls in period', periodCalls.length],
+              ['Open IT calls', openCalls],
+              ['Call resolution rate', `${callResolutionRate}%`],
+              ['Lifecycle events in period', periodHistory.length],
+              ['AMC expiring within 90 days', amcExpiring.length],
+              ['Insurance expiring within 90 days', insuranceExpiring.length],
             ],
           },
           {
@@ -299,6 +353,16 @@ export function ReportsPage({
                 formatTitle(asset.status),
               ]),
           },
+          {
+            title: 'IT Call Analysis',
+            headers: ['Category', 'Calls'],
+            rows: callCategoryRows.map((row) => [row.name, row.value]),
+          },
+          {
+            title: 'Asset Lifecycle Activity',
+            headers: ['Lifecycle Action', 'Events'],
+            rows: lifecycleRows.map((row) => [row.name, row.value]),
+          },
         ],
       },
       `assetflow-executive-report-${new Date().toISOString().slice(0, 10)}.xls`
@@ -306,12 +370,12 @@ export function ReportsPage({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">Executive / Management Reports</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Executive / Management Reports</h1>
           </div>
           <p className="mt-1 text-muted-foreground">
             Management-ready view of asset inventory, financial activity, operations, and risk.
@@ -419,6 +483,13 @@ export function ReportsPage({
         <MetricCard label="Active Employees" value={activeUsers} icon={Building2} />
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="IT Calls" value={periodCalls.length} icon={Activity} />
+        <MetricCard label="Open Calls" value={openCalls} icon={AlertTriangle} />
+        <MetricCard label="Resolution Rate" value={`${callResolutionRate}%`} icon={TrendingUp} />
+        <MetricCard label="Lifecycle Events" value={periodHistory.length} icon={Package} />
+      </div>
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
@@ -519,12 +590,71 @@ export function ReportsPage({
                     <XAxis dataKey="month" />
                     <YAxis tickFormatter={(value) => formatCurrency(Number(value))} />
                     <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="value" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
                 <EmptyState text="No invoice activity in the selected period." />
               )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Card>
+          <CardHeader><CardTitle>IT Calls by Category</CardTitle></CardHeader>
+          <CardContent>
+            <div className="h-[280px]">
+              {callCategoryRows.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={callCategoryRows} layout="vertical" margin={{ left: 20, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={110} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <EmptyState text="No IT calls in the selected period." />}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Asset Lifecycle Activity</CardTitle></CardHeader>
+          <CardContent>
+            <div className="h-[280px]">
+              {lifecycleRows.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={lifecycleRows} layout="vertical" margin={{ left: 20, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={105} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <EmptyState text="No lifecycle activity in the selected period." />}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Warranty Expiry Forecast</CardTitle></CardHeader>
+          <CardContent>
+            <div className="h-[280px]">
+              {warrantyForecast.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={warrantyForecast}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="var(--chart-5)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <EmptyState text="No warranty expiries in the next 12 months." />}
             </div>
           </CardContent>
         </Card>
@@ -544,6 +674,8 @@ export function ReportsPage({
             <RiskRow label="Lost assets" value={lostCount} />
             <RiskRow label="Disposed assets" value={disposedCount} />
             <RiskRow label="Pending assignments" value={pendingAssignments} />
+            <RiskRow label="AMC expiring within 90 days" value={amcExpiring.length} />
+            <RiskRow label="Insurance expiring within 90 days" value={insuranceExpiring.length} />
           </CardContent>
         </Card>
 

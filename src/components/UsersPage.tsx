@@ -8,12 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { type Location, type User, type UserRole, type UserStatus, type Asset, type Assignment, type AssetHistoryEvent, formatDate } from '@/data/sampleData';
 import { IT_ASSET_MANAGER } from './assetLifecycle';
+import { DepartmentsPage } from './DepartmentsPage';
 
 interface UsersPageProps {
   usersList: User[];
   onUsersChange: (users: User[]) => void;
   currentUserId: string;
   departmentsList: string[];
+  onDepartmentsChange: (departments: string[]) => void;
   locationsList: Location[];
   assetsList: Asset[];
   assignmentsList: Assignment[];
@@ -25,7 +27,7 @@ interface UsersPageProps {
 }
 
 export function UsersPage({
-  usersList, onUsersChange, currentUserId, departmentsList, locationsList,
+  usersList, onUsersChange, currentUserId, departmentsList, onDepartmentsChange, locationsList,
   assetsList, assignmentsList, onAssetsChange, onAssignmentsChange,
   history, onHistoryChange, currentUser
 }: UsersPageProps) {
@@ -91,11 +93,11 @@ export function UsersPage({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="af-stagger space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Users</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Users</h1>
           <p className="text-muted-foreground">Manage employees and their access</p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
@@ -121,7 +123,7 @@ export function UsersPage({
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value as UserRole | 'all')}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Roles</option>
               <option value="admin">Admin</option>
@@ -227,6 +229,13 @@ export function UsersPage({
           </Table>
         </CardContent>
       </Card>
+
+      <DepartmentsPage
+        departmentsList={departmentsList}
+        onDepartmentsChange={onDepartmentsChange}
+        usersList={usersList}
+        onUsersChange={onUsersChange}
+      />
 
       {/* Assigned assets */}
       <Dialog open={!!viewingAssetsUser} onOpenChange={(open) => !open && setViewingAssetsUser(null)}>
@@ -487,7 +496,7 @@ export function UsersPage({
                       <select
                         value={departureCondition}
                         onChange={(e) => setDepartureCondition(e.target.value as 'good' | 'fair' | 'damaged')}
-                        className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+                        className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
                       >
                         <option value="good">Good — return to available inventory</option>
                         <option value="fair">Fair — return to available inventory</option>
@@ -500,7 +509,7 @@ export function UsersPage({
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Exit clearance notes</label>
                       <textarea
-                        className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm min-h-[80px]"
+                        className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm min-h-[80px]"
                         value={departureNotes}
                         onChange={(e) => setDepartureNotes(e.target.value)}
                         placeholder="Record any handover, damage, or missing accessory details..."
@@ -658,7 +667,7 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
           <select
             value={formData.locationId}
             onChange={(e) => setFormData({ ...formData, locationId: e.target.value })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             required
           >
             <option value="">Select office location</option>
@@ -689,7 +698,7 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
           <select
             value={formData.department}
             onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             required
           >
             <option value="">Select department</option>
@@ -703,7 +712,7 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
           <select
             value={formData.role}
             onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="user">User</option>
             <option value="manager">Manager</option>
@@ -716,7 +725,7 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
             value={formData.status}
             disabled={formData.status === 'left'}
             onChange={(e) => setFormData({ ...formData, status: e.target.value as UserStatus })}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm disabled:opacity-60"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm disabled:opacity-60"
           >
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
