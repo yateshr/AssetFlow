@@ -10,7 +10,7 @@ import {
   type ConfigEntity,
   type NumberingComponentType,
 } from '@/lib/assetflowConfig';
-import type { Location, User } from '@/data/sampleData';
+import type { Location, User } from '@/data/models';
 
 
 const CURRENCY_OPTIONS = [

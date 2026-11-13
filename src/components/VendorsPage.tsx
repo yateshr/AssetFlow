@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { type Vendor } from '@/data/sampleData';
+import { type Vendor } from '@/data/models';
 
 const VENDOR_CATEGORIES = [
   'Hardware',
@@ -19,8 +19,8 @@ const VENDOR_CATEGORIES = [
 ];
 
 const CURRENCIES = [
-  'USD - US Dollar',
   'INR - Indian Rupee',
+  'USD - US Dollar',
   'EUR - Euro',
   'GBP - British Pound',
   'AED - UAE Dirham',

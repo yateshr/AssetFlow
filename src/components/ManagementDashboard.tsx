@@ -3,7 +3,7 @@ import { Activity, AlertTriangle, Boxes, CheckCircle2, CircleDollarSign, Laptop,
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { Asset, User } from '@/data/sampleData';
+import type { Asset, User } from '@/data/models';
 import type { Page } from './App';
 
 interface ManagementDashboardProps {

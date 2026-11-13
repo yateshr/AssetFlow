@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { formatCurrency, formatDateTime, type Asset, type AssetHistoryEvent, type User, type Location } from '@/data/sampleData';
+import { formatCurrency, formatDateTime, type Asset, type AssetHistoryEvent, type User, type Location } from '@/data/models';
 import { assetStatusLabel, holderName } from './assetLifecycle';
 
 interface Props {

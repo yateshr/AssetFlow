@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { 
   LayoutDashboard, 
   BarChart3,
@@ -25,7 +26,9 @@ import {
   PanelLeftOpen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Login } from './Login';
+import { Login, ConfigMissing } from './Login';
+import { Toaster } from '@/components/ui/sonner';
+import { loadConfig, saveConfig } from '@/lib/assetflowConfig';
 import { Dashboard } from './Dashboard';
 import { AssetsPage } from './AssetsPage';
 import { UsersPage } from './UsersPage';
@@ -44,9 +47,6 @@ import { OperationsPage } from './OperationsPage';
 import { DataManagementPage } from './DataManagementPage';
 import { SettingsWithOrganizationPage } from './SettingsWithOrganizationPage';
 import {
-  departments as initialDepartments,
-  locations as initialLocations,
-  users as initialUsers,
   type Location,
   type User,
   type Vendor,
@@ -55,34 +55,37 @@ import {
   type Invoice,
   type AssetHistoryEvent,
   type ItCallLog,
-  assets as initialAssets,
-  assignments as initialAssignments,
-  invoices as initialInvoices,
-  vendors as initialVendors,
-  assetHistory as initialAssetHistory,
-  itCallLogs as initialItCallLogs
-} from '@/data/sampleData';
+} from '@/data/models';
+import { supabase } from '@/lib/supabase';
+import { signOut } from '@/lib/auth';
+import { clearCache, getCollection, hydrate, replaceCollection, useCollection } from '@/lib/db';
+import { eraseAllData, loadDemoData } from '@/lib/demo';
+import { Loader2, ShieldAlert } from 'lucide-react';
 
 export type Page = 'dashboard' | 'reports' | 'assets' | 'operations' | 'call-logs' | 'users' | 'locations' | 'vendors' | 'invoices' | 'assignments' | 'audit-logs' | 'licenses' | 'settings' | 'data-tools';
 
-export function App() {
-  const [usersList, setUsersList] = useState<User[]>(initialUsers);
-  const [locationsList, setLocationsList] = useState<Location[]>(initialLocations);
-  const [departmentsList, setDepartmentsList] = useState<string[]>(initialDepartments);
-  const [assetsList, setAssetsList] = useState<Asset[]>(initialAssets);
-  const [assignmentsList, setAssignmentsList] = useState<Assignment[]>(initialAssignments);
-  const [invoicesList, setInvoicesList] = useState<Invoice[]>(initialInvoices);
-  const [vendorsList, setVendorsList] = useState<Vendor[]>(initialVendors);
-  const [assetHistory, setAssetHistory] = useState<AssetHistoryEvent[]>(initialAssetHistory);
-  const [callLogsList, setCallLogsList] = useState<ItCallLog[]>(initialItCallLogs);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+type DepartmentRecord = { id: string; name: string };
+
+function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout: () => void }) {
+  const [usersList, setUsersList] = useCollection<User>('users');
+  const [locationsList, setLocationsList] = useCollection<Location>('locations');
+  const [departmentRecords, setDepartmentRecords] = useCollection<DepartmentRecord>('departments');
+  const [assetsList, setAssetsList] = useCollection<Asset>('assets');
+  const [assignmentsList, setAssignmentsList] = useCollection<Assignment>('assignments');
+  const [invoicesList, setInvoicesList] = useCollection<Invoice>('invoices');
+  const [vendorsList, setVendorsList] = useCollection<Vendor>('vendors');
+  const [assetHistory, setAssetHistory] = useCollection<AssetHistoryEvent>('history');
+  const [callLogsList, setCallLogsList] = useCollection<ItCallLog>('call-logs');
+  const departmentsList = departmentRecords.map(d => d.name);
+  const setDepartmentsList = (names: string[]) => setDepartmentRecords(names.map(name => ({ id: name, name })));
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [operationsTab, setOperationsTab] = useState('overview');
   const [notificationCount, setNotificationCount] = useState(0);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [assetFilterRequest, setAssetFilterRequest] = useState<{ status?: Asset['status']; warranty?: 'expired' | '30' | '60' | '90'; type?: Asset['type'] } | null>(null);
-  const signedInUser = currentUser ? usersList.find(user => user.id === currentUser.id) || currentUser : null;
+  const signedInUser = usersList.find(user => user.id === currentUserId) ?? null;
+  const setCurrentUser = (_: null) => onLogout();
 
   const [collapsed, setCollapsed] = useState(false);
   const [dark, setDark] = useState(false);
@@ -113,9 +116,8 @@ export function App() {
     });
   };
 
-  if (!signedInUser) {
-    return <Login users={usersList} onLogin={setCurrentUser} />;
-  }
+  if (!signedInUser) return null;
+
 
   const menuGroups: { label: string; items: { id: Page; label: string; icon: typeof Package }[] }[] = [
     {
@@ -154,7 +156,7 @@ export function App() {
       label: 'System',
       items: [
         { id: 'settings', label: 'Settings', icon: Settings },
-        { id: 'data-tools', label: 'Demo & Data', icon: Database },
+        ...(signedInUser.role === 'admin' ? [{ id: 'data-tools' as Page, label: 'Demo & Data', icon: Database }] : []),
       ],
     },
   ];
@@ -288,24 +290,9 @@ export function App() {
       case 'data-tools':
         return (
           <DataManagementPage
-            onResetDemoData={() => {
-              setUsersList(initialUsers);
-              setLocationsList(initialLocations);
-              setDepartmentsList(initialDepartments);
-              setAssetsList(initialAssets);
-              setAssignmentsList(initialAssignments);
-              setInvoicesList(initialInvoices);
-              setVendorsList(initialVendors);
-              setAssetHistory(initialAssetHistory);
-              setCallLogsList(initialItCallLogs);
-              Object.keys(localStorage).filter(k => k.startsWith('assetflow-')).forEach(k => localStorage.removeItem(k));
-              setAssetFilterRequest(null);
-              setNotificationOpen(false);
-            }}
-            onClearFeatureData={() => {
-              Object.keys(localStorage).filter(k => k.startsWith('assetflow-')).forEach(k => localStorage.removeItem(k));
-              setNotificationOpen(false);
-            }}
+            isAdmin={signedInUser.role === 'admin'}
+            onLoadDemoData={async () => { await loadDemoData(); window.location.reload(); }}
+            onEraseAllData={async () => { await eraseAllData(); window.location.reload(); }}
           />
         );
       default:
@@ -487,5 +474,147 @@ export function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Authentication gate: signs in, loads this company's data, then shows the app.
+// ---------------------------------------------------------------------------
+type Phase =
+  | { name: 'loading' }
+  | { name: 'anon' }
+  | { name: 'ready'; userId: string }
+  | { name: 'blocked'; email: string }
+  | { name: 'error'; message: string };
+
+function FullScreenMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen af-ambient flex items-center justify-center p-6">
+      <div className="af-page max-w-md w-full rounded-2xl border bg-card p-8 text-center shadow-[var(--shadow-soft)]">{children}</div>
+    </div>
+  );
+}
+
+function AppGate() {
+  const [phase, setPhase] = useState<Phase>({ name: 'loading' });
+  // undefined = nothing evaluated yet; null = signed out; string = signed-in auth id
+  const activeUser = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+
+    const boot = async (session: Session | null) => {
+      const authId = session?.user.id ?? null;
+      if (authId === activeUser.current) return; // token refresh etc.
+      activeUser.current = authId;
+
+      if (!session) {
+        clearCache();
+        if (!cancelled) setPhase({ name: 'anon' });
+        return;
+      }
+      if (!cancelled) setPhase({ name: 'loading' });
+      try {
+        await hydrate();
+        const email = (session.user.email ?? '').toLowerCase();
+        const users = getCollection<User>('users');
+        let me = users.find(u => u.email.toLowerCase() === email);
+
+        // First run: the very first account becomes the administrator.
+        if (!me && users.length === 0) {
+          const meta = session.user.user_metadata ?? {};
+          me = {
+            id: crypto.randomUUID(),
+            name: String(meta.full_name || email.split('@')[0]),
+            email,
+            department: '',
+            locationId: '',
+            role: 'admin',
+            phone: '',
+            joinDate: new Date().toISOString().split('T')[0],
+            status: 'active',
+          };
+          await replaceCollection<User>('users', [me]);
+          // Make sure it really reached the database before continuing.
+          await hydrate();
+          me = getCollection<User>('users').find(u => u.email.toLowerCase() === email);
+          if (!me) throw new Error('The administrator account could not be saved. Check that the database migration has been applied.');
+          if (meta.company_name) {
+            const config = loadConfig();
+            saveConfig({ ...config, organization: { ...config.organization, companyName: String(meta.company_name) } });
+          }
+        }
+
+        if (cancelled) return;
+        setPhase(me && me.status === 'active' ? { name: 'ready', userId: me.id } : { name: 'blocked', email });
+      } catch (e) {
+        if (!cancelled) setPhase({ name: 'error', message: e instanceof Error ? e.message : String(e) });
+      }
+    };
+
+    supabase.auth.getSession().then(({ data }) => boot(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { void boot(session); });
+    return () => { cancelled = true; sub.subscription.unsubscribe(); };
+  }, []);
+
+  const logout = async () => {
+    await flushAndSignOut();
+  };
+
+  if (!supabase) return <ConfigMissing />;
+
+  switch (phase.name) {
+    case 'loading':
+      return (
+        <FullScreenMessage>
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <p className="mt-4 text-sm text-muted-foreground">Loading your workspace…</p>
+        </FullScreenMessage>
+      );
+    case 'anon':
+      return <Login />;
+    case 'blocked':
+      return (
+        <FullScreenMessage>
+          <ShieldAlert className="mx-auto h-8 w-8 text-destructive" />
+          <h1 className="mt-4 text-xl font-bold">No access</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {phase.email} is not an active user of this workspace. Ask an administrator to add or re-activate you.
+          </p>
+          <Button className="mt-6" variant="outline" onClick={logout}>Sign out</Button>
+        </FullScreenMessage>
+      );
+    case 'error':
+      return (
+        <FullScreenMessage>
+          <ShieldAlert className="mx-auto h-8 w-8 text-destructive" />
+          <h1 className="mt-4 text-xl font-bold">Could not load data</h1>
+          <p className="mt-2 text-sm text-muted-foreground break-words">{phase.message}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Check that the migration in supabase/migrations has been run on this project.</p>
+          <div className="mt-6 flex justify-center gap-2">
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Button variant="outline" onClick={logout}>Sign out</Button>
+          </div>
+        </FullScreenMessage>
+      );
+    case 'ready':
+      return <AppShell key={phase.userId} currentUserId={phase.userId} onLogout={logout} />;
+  }
+}
+
+async function flushAndSignOut() {
+  const { pendingWrites, flushKv } = await import('@/lib/db');
+  flushKv();
+  await pendingWrites();
+  await signOut();
+}
+
+export function App() {
+  return (
+    <>
+      <AppGate />
+      <Toaster richColors position="top-right" />
+    </>
   );
 }

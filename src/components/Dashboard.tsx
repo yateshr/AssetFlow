@@ -14,33 +14,42 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CountUp } from '@/components/ui/count-up';
+import { useCollection, kv } from '@/lib/db';
 import {
-  assets as sampleAssets, 
-  users as sampleUsers, 
-  locations, 
-  assignments as sampleAssignments, 
-  auditLogs,
-  itCallLogs,
-  softwareLicenses,
-  maintenanceRecords,
-  formatDate, 
+  type Asset,
+  type User,
+  type Assignment,
+  type Location,
+  type AuditLog,
+  type AssetHistoryEvent,
+  type ItCallLog,
+  type SoftwareLicense,
+  formatDate,
   formatDateTime,
   formatCurrency,
   type AssetStatus,
-  type AssetType 
-} from '@/data/sampleData';
+  type AssetType
+} from '@/data/models';
 import type { Page } from './App';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
   onNavigate: (page: Page) => void;
-  assetsList?: typeof sampleAssets;
-  usersList?: typeof sampleUsers;
-  assignmentsList?: typeof sampleAssignments;
-  onAssetDrilldown?: (filter: { status?: AssetStatus; warranty?: 'expired'|'30'|'60'|'90'; type?: typeof sampleAssets[number]['type'] }) => void;
+  assetsList?: Asset[];
+  usersList?: User[];
+  assignmentsList?: Assignment[];
+  onAssetDrilldown?: (filter: { status?: AssetStatus; warranty?: 'expired'|'30'|'60'|'90'; type?: Asset['type'] }) => void;
 }
 
-export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = sampleUsers, assignmentsList = sampleAssignments, onAssetDrilldown }: DashboardProps) {
+export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignmentsList = [], onAssetDrilldown }: DashboardProps) {
+  const [locations] = useCollection<Location>('locations');
+  const [auditLogs] = useCollection<AuditLog>('audit-logs');
+  const [history] = useCollection<AssetHistoryEvent>('history');
+  const [itCallLogs] = useCollection<ItCallLog>('call-logs');
+  const [softwareLicenses] = useCollection<SoftwareLicense>('licenses');
+  const maintenanceRecords: { status?: string }[] = (() => {
+    try { return JSON.parse(kv.getItem('assetflow-maintenance') || '[]'); } catch { return []; }
+  })();
   const assets = assetsList;
   const users = usersList;
   const assignments = assignmentsList;
@@ -95,11 +104,25 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
     name: l.name.length > 15 ? l.name.substring(0, 15) + '...' : l.name,
     used: l.usedSeats,
     total: l.totalSeats,
-    utilization: Math.round((l.usedSeats / l.totalSeats) * 100)
+    utilization: l.totalSeats > 0 ? Math.round((l.usedSeats / l.totalSeats) * 100) : 0
   }));
 
-  // Recent activity
-  const recentActivity = auditLogs.slice(0, 5);
+  // Recent activity: system audit entries plus asset lifecycle events, newest first
+  const recentActivity = [
+    ...auditLogs,
+    ...history.map(event => ({
+      id: event.id,
+      timestamp: event.timestamp,
+      userName: event.performedBy || 'System',
+      action: event.action,
+      entityName: assets.find(a => a.id === event.assetId)?.name || event.assetId,
+    })),
+  ]
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 5);
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const addedThisMonth = assets.filter(a => (a.purchaseDate || '').startsWith(thisMonth)).length;
 
   const tooltipStyle = {
     contentStyle: {
@@ -118,7 +141,7 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   const statCards = [
-    { label: 'Total Assets', value: totalAssets, icon: Package, tone: 'chart-1', note: <><span className="text-chart-2 font-semibold">+3</span> added this month</>, onClick: () => onAssetDrilldown?.({}) },
+    { label: 'Total Assets', value: totalAssets, icon: Package, tone: 'chart-1', note: <><span className="text-chart-2 font-semibold">+{addedThisMonth}</span> purchased this month</>, onClick: () => onAssetDrilldown?.({}) },
     { label: 'Assigned', value: assignedAssets, icon: Users, tone: 'chart-2', note: <>{activeAssignments} active assignments</>, onClick: () => onAssetDrilldown?.({ status: 'assigned' }) },
     { label: "Today's IT Calls", value: todaysCalls, icon: Headphones, tone: 'chart-4', note: <>{openCalls} open or in progress</>, onClick: () => onNavigate('call-logs') },
     { label: 'In Maintenance', value: maintenanceAssets, icon: AlertTriangle, tone: 'chart-3', note: <>{maintenanceRecords.filter(m => m.status === 'in-progress').length} in progress</>, onClick: () => onAssetDrilldown?.({ status: 'maintenance' }) },
@@ -132,6 +155,22 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
         <p className="text-muted-foreground">Overview of your IT asset management system</p>
       </div>
+
+      {/* First-run guidance */}
+      {totalAssets === 0 && (
+        <Card className="af-scale-in border-dashed">
+          <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold">Your workspace is empty. Let's get started.</p>
+              <p className="text-sm text-muted-foreground mt-1">Add your locations and departments in Settings, then register your first asset.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => onNavigate('settings')}>Open settings</Button>
+              <Button onClick={() => onNavigate('assets')}>Add first asset</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="af-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -392,7 +431,7 @@ export function Dashboard({ onNavigate, assetsList = sampleAssets, usersList = s
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">{itCallLogs.length}</p>
-              <p className="text-sm text-muted-foreground">Report Data Points</p>
+              <p className="text-sm text-muted-foreground">IT Calls Logged</p>
             </div>
           </CardContent>
         </Card>

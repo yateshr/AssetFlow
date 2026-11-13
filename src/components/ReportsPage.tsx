@@ -44,7 +44,7 @@ import {
   type ItCallLog,
   type User,
   type Vendor,
-} from '@/data/sampleData';
+} from '@/data/models';
 
 type Period = 'month' | 'quarter' | 'year' | 'all' | 'custom';
 

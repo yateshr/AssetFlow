@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Search, Package, Users, Truck, MapPin, Receipt, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import type { Asset, User, Vendor, Location, Invoice } from '@/data/sampleData';
+import type { Asset, User, Vendor, Location, Invoice } from '@/data/models';
 import type { Page } from './App';
 
 interface GlobalSearchProps {

@@ -3,7 +3,7 @@ import { Plus, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { User } from '@/data/sampleData';
+import type { User } from '@/data/models';
 
 interface DepartmentsPageProps {
   departmentsList: string[];

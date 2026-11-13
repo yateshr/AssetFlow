@@ -1,74 +1,78 @@
 import { useState } from 'react';
-import { Database, RotateCcw, Trash2, FlaskConical, AlertTriangle } from 'lucide-react';
+import { Database, Trash2, FlaskConical, AlertTriangle, Loader2, ShieldAlert } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 
 interface Props {
-  onResetDemoData: () => void;
-  onClearFeatureData: () => void;
+  isAdmin: boolean;
+  onLoadDemoData: () => Promise<void>;
+  onEraseAllData: () => Promise<void>;
 }
 
-const featureKeys = [
-  'assetflow-stock',
-  'assetflow-stock-movements',
-  'assetflow-infrastructure',
-  'assetflow-maintenance',
-  'assetflow-asset-requests',
-  'assetflow-device-profiles',
-  'assetflow-notifications-read',
-  'assetflow-archived-assets',
-];
+export function DataManagementPage({ isAdmin, onLoadDemoData, onEraseAllData }: Props) {
+  const [busy, setBusy] = useState<'demo' | 'erase' | null>(null);
 
-export function DataManagementPage({ onResetDemoData, onClearFeatureData }: Props) {
-  const [busy, setBusy] = useState(false);
-
-  const run = (fn: () => void, message: string) => {
+  const run = async (kind: 'demo' | 'erase', fn: () => Promise<void>, message: string) => {
     if (!window.confirm(message)) return;
-    setBusy(true);
-    fn();
-    window.setTimeout(() => setBusy(false), 250);
+    setBusy(kind);
+    try {
+      await fn();
+    } catch (e) {
+      toast.error('Action failed', { description: e instanceof Error ? e.message : String(e) });
+      setBusy(null);
+    }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-md mx-auto text-center py-16">
+        <ShieldAlert className="mx-auto h-8 w-8 text-muted-foreground" />
+        <p className="mt-3 font-medium">Administrators only</p>
+        <p className="text-sm text-muted-foreground">Ask an administrator if you need to import or erase data.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="af-stagger space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Demo & Data Management</h1>
-        <p className="text-muted-foreground">Reset local demo data and manage browser-stored AssetFlow feature data.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Data Management</h1>
+        <p className="text-muted-foreground">Everything is stored in your own Supabase database. These tools affect all users.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FlaskConical className="h-5 w-5" /> Demo Environment</CardTitle>
-            <CardDescription>Restore the original sample records used by the local demonstration environment.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><FlaskConical className="h-5 w-5" /> Sample data</CardTitle>
+            <CardDescription>Fill the workspace with example assets, users, vendors and invoices so you can explore AssetFlow.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 mt-0.5 text-muted-foreground" />
-                <div className="text-sm text-muted-foreground">
-                  Resetting demo data replaces the current in-memory users, locations, assets, assignments, invoices, vendors and audit history with the bundled sample data.
-                </div>
-              </div>
+            <div className="rounded-lg border bg-muted/30 p-4 flex items-start gap-3 text-sm text-muted-foreground">
+              <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" />
+              Replaces all existing business records. Your own account is kept. Only use this on a fresh or throwaway workspace.
             </div>
-            <Button disabled={busy} onClick={() => run(onResetDemoData, 'Reset the entire local demo environment to the original sample data? Current local changes will be replaced.')}>
-              <RotateCcw className="h-4 w-4 mr-2" /> Reset Demo Data
+            <Button
+              disabled={busy !== null}
+              onClick={() => run('demo', onLoadDemoData, 'Replace ALL current data with sample data? This cannot be undone.')}
+            >
+              {busy === 'demo' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />} Load sample data
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5" /> Local Feature Data</CardTitle>
-            <CardDescription>Clear data stored in the browser by the local-only operational features.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Trash2 className="h-5 w-5" /> Erase all data</CardTitle>
+            <CardDescription>Permanently delete every asset, vendor, invoice, assignment, log and setting. User accounts are kept.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {featureKeys.map(key => <Badge key={key} variant="outline">{key.replace('assetflow-', '')}</Badge>)}
-            </div>
-            <Button variant="destructive" disabled={busy} onClick={() => run(onClearFeatureData, 'Clear local feature data? This removes locally stored stock movements, requests, maintenance, infrastructure, profiles, notifications and archived assets.')}>
-              <Trash2 className="h-4 w-4 mr-2" /> Clear Local Feature Data
+          <CardContent>
+            <Button
+              variant="destructive"
+              disabled={busy !== null}
+              onClick={() => run('erase', onEraseAllData, 'Permanently delete ALL business data for everyone in this workspace? This cannot be undone.')}
+            >
+              {busy === 'erase' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Erase all data
             </Button>
           </CardContent>
         </Card>

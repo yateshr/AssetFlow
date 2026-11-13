@@ -1,3 +1,4 @@
+import { kv } from '@/lib/db';
 export type ConfigEntity = {
   id: string;
   name: string;
@@ -49,7 +50,7 @@ export function createEmptyConfig(): AssetFlowConfig {
       id: crypto.randomUUID(),
       companyName: '',
       legalName: '',
-      currency: '',
+      currency: 'INR',
       timezone: '',
     },
     numbering: {
@@ -69,7 +70,7 @@ export function loadConfig(): AssetFlowConfig {
   if (typeof window === 'undefined') return createEmptyConfig();
 
   try {
-    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    const raw = kv.getItem(CONFIG_STORAGE_KEY);
     if (!raw) return createEmptyConfig();
 
     const parsed = JSON.parse(raw) as Partial<AssetFlowConfig>;
@@ -94,7 +95,7 @@ export function loadConfig(): AssetFlowConfig {
 
 export function saveConfig(config: AssetFlowConfig) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+  kv.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
 }
 
 export function normalizeName(value: string) {

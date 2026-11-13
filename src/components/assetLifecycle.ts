@@ -5,7 +5,7 @@ import type {
   User,
   Assignment,
   AssetStatus,
-} from '@/data/sampleData';
+} from '@/data/models';
 
 export const IT_ASSET_MANAGER = 'IT Asset Manager';
 

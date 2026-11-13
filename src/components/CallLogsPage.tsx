@@ -24,7 +24,7 @@ import {
   type ItCallLog,
   type ItCallPriority,
   type ItCallStatus
-} from '@/data/sampleData';
+} from '@/data/models';
 import { exportExcelReport } from '@/lib/reportExport';
 
 const statuses: Array<ItCallStatus | 'all'> = ['all', 'open', 'in-progress', 'resolved', 'closed'];

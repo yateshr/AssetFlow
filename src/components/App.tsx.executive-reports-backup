@@ -55,7 +55,7 @@ import {
   invoices as initialInvoices,
   vendors as initialVendors,
   assetHistory as initialAssetHistory
-} from '@/data/sampleData';
+} from '@/data/models';
 
 export type Page = 'dashboard' | 'reports' | 'assets' | 'operations' | 'call-logs' | 'users' | 'departments' | 'locations' | 'vendors' | 'invoices' | 'assignments' | 'audit-logs' | 'licenses' | 'settings' | 'data-tools';
 

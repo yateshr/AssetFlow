@@ -56,3 +56,6 @@ package.json.backup
 
 dist/
 .tmp/
+
+.env.local
+.env.*.local

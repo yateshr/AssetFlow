@@ -1,3 +1,4 @@
+import { kv } from '@/lib/db';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Wrench, ClipboardList, BellRing, Calculator, QrCode, Upload, Download,
@@ -12,8 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { Asset, User, MaintenanceRecord, AssetHistoryEvent } from '@/data/sampleData';
-import { formatCurrency, formatDate } from '@/data/sampleData';
+import type { Asset, User, MaintenanceRecord, AssetHistoryEvent } from '@/data/models';
+import { formatCurrency, formatDate } from '@/data/models';
 
 type RequestStatus = 'pending' | 'approved' | 'rejected' | 'completed';
 type AssetRequest = { id: string; userId: string; assetType: string; reason: string; date: string; status: RequestStatus };
@@ -37,20 +38,12 @@ interface OperationsPageProps {
   onNotificationOpenChange?: (open: boolean) => void;
 }
 
-const requestSeed: AssetRequest[] = [
-  { id: 'REQ-001', userId: 'USR-001', assetType: 'laptop', reason: 'New project equipment', date: new Date().toISOString().slice(0,10), status: 'pending' },
-];
+const requestSeed: AssetRequest[] = [];
 
-const defaultStock: StockItem[] = [
-  { id:'STK-001', name:'USB-C Dock', sku:'DOCK-001', category:'Accessories', quantity:12, minQuantity:5, unitCost:85, location:'IT Store' },
-  { id:'STK-002', name:'Wireless Mouse', sku:'MOU-001', category:'Accessories', quantity:24, minQuantity:10, unitCost:25, location:'IT Store' },
-  { id:'STK-003', name:'Keyboard', sku:'KEY-001', category:'Accessories', quantity:18, minQuantity:8, unitCost:30, location:'IT Store' },
-];
+const defaultStock: StockItem[] = [];
 
-const defaultInfra: Infrastructure[] = [
-  { id:'INF-001', name:'Core Switch', type:'switch', ipAddress:'192.168.1.2', macAddress:'00:11:22:33:44:55', hostname:'CORE-SW-01', location:'Head Office', status:'online', vendor:'Cisco', model:'Catalyst', notes:'' },
-  { id:'INF-002', name:'Main Firewall', type:'firewall', ipAddress:'192.168.1.1', macAddress:'00:11:22:33:44:66', hostname:'FW-01', location:'Head Office', status:'online', vendor:'Fortinet', model:'FortiGate', notes:'' },
-];
+const defaultInfra: Infrastructure[] = [];
+const blankInfra: Infrastructure = { id: "", name: "", type: "server", ipAddress: "", macAddress: "", hostname: "", location: "", status: "online", vendor: "", model: "", notes: "" };
 
 const blankSpec = (assetId: string): DeviceSpec => ({
   assetId, enabled: true, hostname:'', os:'', osVersion:'', cpu:'', ram:'', storage:'', gpu:'',
@@ -86,12 +79,12 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
   const [auditSearch, setAuditSearch] = useState('');
   const [auditAction, setAuditAction] = useState('all');
   const [auditEntity, setAuditEntity] = useState('all');
-  const [infraForm, setInfraForm] = useState<Infrastructure>(defaultInfra[0]);
+  const [infraForm, setInfraForm] = useState<Infrastructure>(blankInfra);
 
   useEffect(() => {
     try {
       const read = <T,>(key: string, fallback: T): T => {
-        const raw = localStorage.getItem(key);
+        const raw = kv.getItem(key);
         return raw ? JSON.parse(raw) : fallback;
       };
       setRequests(read('assetflow-asset-requests', requestSeed));
@@ -113,13 +106,13 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
     } catch {}
   }, []);
 
-  useEffect(() => { localStorage.setItem('assetflow-asset-requests', JSON.stringify(requests)); }, [requests]);
-  useEffect(() => { localStorage.setItem('assetflow-maintenance', JSON.stringify(maintenance)); }, [maintenance]);
-  useEffect(() => { localStorage.setItem('assetflow-stock', JSON.stringify(stock)); }, [stock]);
-  useEffect(() => { localStorage.setItem('assetflow-stock-movements', JSON.stringify(movements)); }, [movements]);
-  useEffect(() => { localStorage.setItem('assetflow-device-specs', JSON.stringify(specs)); }, [specs]);
-  useEffect(() => { localStorage.setItem('assetflow-infrastructure', JSON.stringify(infra)); }, [infra]);
-  useEffect(() => { localStorage.setItem('assetflow-notifications-read', JSON.stringify(notificationsRead)); }, [notificationsRead]);
+  useEffect(() => { kv.setItem('assetflow-asset-requests', JSON.stringify(requests)); }, [requests]);
+  useEffect(() => { kv.setItem('assetflow-maintenance', JSON.stringify(maintenance)); }, [maintenance]);
+  useEffect(() => { kv.setItem('assetflow-stock', JSON.stringify(stock)); }, [stock]);
+  useEffect(() => { kv.setItem('assetflow-stock-movements', JSON.stringify(movements)); }, [movements]);
+  useEffect(() => { kv.setItem('assetflow-device-specs', JSON.stringify(specs)); }, [specs]);
+  useEffect(() => { kv.setItem('assetflow-infrastructure', JSON.stringify(infra)); }, [infra]);
+  useEffect(() => { kv.setItem('assetflow-notifications-read', JSON.stringify(notificationsRead)); }, [notificationsRead]);
   useEffect(() => { setTab(initialTab); }, [initialTab]);
 
   const warranty = useMemo(() => assetsList.map(a => {

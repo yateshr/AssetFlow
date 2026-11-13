@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { auditLogs, type AuditLog, type AssetHistoryEvent, type User as UserRecord, type Asset, formatDateTime } from '@/data/sampleData';
+import { getCollection } from '@/lib/db';
+import { type AuditLog, type AssetHistoryEvent, type User as UserRecord, type Asset, formatDateTime } from '@/data/models';
 
 interface AuditLogsPageProps {
   history?: AssetHistoryEvent[];
@@ -43,7 +44,7 @@ export function AuditLogsPage({ history = [], usersList = [], assetsList = [] }:
     source: event.source || 'lifecycle'
   })), [history, usersList, assetsList]);
 
-  const allLogs = useMemo<AuditRow[]>(() => [...auditLogs.map(x => ({...x, source:'system' as const})), ...lifecycleLogs]
+  const allLogs = useMemo<AuditRow[]>(() => [...getCollection<AuditLog>('audit-logs').map(x => ({...x, source:'system' as const})), ...lifecycleLogs]
     .sort((a,b) => b.timestamp.localeCompare(a.timestamp)), [lifecycleLogs]);
 
   const actions = [...new Set(allLogs.map(log => log.action))];

@@ -1,3 +1,4 @@
+import { kv } from '@/lib/db';
 import { useEffect, useState } from 'react';
 import { 
   Plus, 
@@ -40,7 +41,7 @@ import {
   type Location,
   formatDate,
   formatCurrency
-} from '@/data/sampleData';
+} from '@/data/models';
 
 interface AssetsPageProps {
   assetsList: Asset[];
@@ -78,7 +79,7 @@ export function AssetsPage({
   const [archivedAssets, setArchivedAssets] = useState<(Asset & { deletedAt: string; deletedBy?: string })[]>(() => {
     try {
       if (typeof window === 'undefined') return [];
-      return JSON.parse(localStorage.getItem('assetflow-archived-assets') || '[]');
+      return JSON.parse(kv.getItem('assetflow-archived-assets') || '[]');
     } catch { return []; }
   });
   const [undoAsset, setUndoAsset] = useState<(Asset & { deletedAt: string; deletedBy?: string }) | null>(null);
@@ -162,7 +163,7 @@ export function AssetsPage({
 
   const persistArchived = (items: (Asset & { deletedAt: string; deletedBy?: string })[]) => {
     setArchivedAssets(items);
-    localStorage.setItem('assetflow-archived-assets', JSON.stringify(items));
+    kv.setItem('assetflow-archived-assets', JSON.stringify(items));
   };
 
   const handleDelete = (id: string) => {
@@ -594,9 +595,9 @@ export function AssetsPage({
                 const previous = assets.find(a => a.id === editingAsset.id);
                 onAssetsChange(assets.map(a => a.id === editingAsset.id ? { ...a, ...normalizedData } : a));
                 try {
-                  const saved = JSON.parse(localStorage.getItem('assetflow-device-specs') || '{}');
+                  const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
                   saved[editingAsset.id] = { ...detailedProfile, assetId: editingAsset.id, enabled: detailedProfile.enabled };
-                  localStorage.setItem('assetflow-device-specs', JSON.stringify(saved));
+                  kv.setItem('assetflow-device-specs', JSON.stringify(saved));
                 } catch {}
                 if (previous) {
                   const events = [];
@@ -655,9 +656,9 @@ export function AssetsPage({
                 };
                 onAssetsChange([...assets, newAsset]);
                 try {
-                  const saved = JSON.parse(localStorage.getItem('assetflow-device-specs') || '{}');
+                  const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
                   saved[newAsset.id] = { ...detailedProfile, assetId: newAsset.id, enabled: detailedProfile.enabled };
-                  localStorage.setItem('assetflow-device-specs', JSON.stringify(saved));
+                  kv.setItem('assetflow-device-specs', JSON.stringify(saved));
                 } catch {}
                 onHistoryChange([
                   ...history,
@@ -784,7 +785,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
   const [profile, setProfile] = useState<DetailedProfileDraft>(() => {
     if (!asset) return emptyDetailedProfile();
     try {
-      const saved = JSON.parse(localStorage.getItem('assetflow-device-specs') || '{}');
+      const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
       return { ...emptyDetailedProfile(), ...(saved[asset.id] || {}), enabled: true };
     } catch {
       return emptyDetailedProfile();
@@ -795,7 +796,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
     setDetailedProfileEnabled(true);
     if (asset) {
       try {
-        const saved = JSON.parse(localStorage.getItem('assetflow-device-specs') || '{}');
+        const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
         setProfile({ ...emptyDetailedProfile(), ...(saved[asset.id] || {}), enabled: true });
       } catch {
         setProfile(emptyDetailedProfile());

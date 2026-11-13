@@ -1,3 +1,4 @@
+import { getCollection } from '@/lib/db';
 import { useState } from 'react';
 import { Plus, Search, Edit, Trash2, MapPin, Users, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { 
-  assets,
+
+  type Asset,
   type Location, 
   formatDate 
-} from '@/data/sampleData';
+} from '@/data/models';
 
 interface LocationsPageProps {
   locationsList: Location[];
@@ -43,7 +45,7 @@ export function LocationsPage({ locationsList, onLocationsChange }: LocationsPag
   };
 
   const getAssetCount = (locationId: string) => {
-    return assets.filter(a => a.location === locationId).length;
+    return getCollection<Asset>('assets').filter(a => a.location === locationId).length;
   };
 
   const handleDelete = (id: string) => {

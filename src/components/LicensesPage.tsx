@@ -1,3 +1,4 @@
+import { useCollection } from '@/lib/db';
 import { useState } from 'react';
 import { Plus, Search, Edit, Trash2, Key, Calendar, Users, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,14 +8,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
-  softwareLicenses as initialLicenses, 
+
   type SoftwareLicense, 
   formatDate, 
   formatCurrency 
-} from '@/data/sampleData';
+} from '@/data/models';
 
 export function LicensesPage() {
-  const [licensesList, setLicensesList] = useState<SoftwareLicense[]>(initialLicenses);
+  const [licensesList, setLicensesList] = useCollection<SoftwareLicense>('licenses');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);

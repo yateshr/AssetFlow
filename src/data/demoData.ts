@@ -1,202 +1,9 @@
-// Types
-export type AssetStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'disposed' | 'lost';
-export type AssetType = 'laptop' | 'desktop' | 'monitor' | 'phone' | 'tablet' | 'printer' | 'server' | 'accessory';
-export type AssignmentStatus = 'active' | 'returned' | 'pending';
-export type InvoiceStatus = 'draft' | 'received' | 'partially-received' | 'paid' | 'partially-paid' | 'overdue' | 'cancelled';
-export type UserRole = 'admin' | 'manager' | 'user';
-export type UserStatus = 'active' | 'inactive' | 'left';
-
-export type AssetHistoryAction =
-  | 'Purchased'
-  | 'Received'
-  | 'Assigned'
-  | 'Returned'
-  | 'Transferred'
-  | 'Under Repair'
-  | 'Repair Completed'
-  | 'Moved'
-  | 'Status Changed'
-  | 'Retired'
-  | 'Disposed'
-  | 'Lost'
-  | 'Found';
-export type ItCallStatus = 'open' | 'in-progress' | 'resolved' | 'closed';
-export type ItCallPriority = 'low' | 'medium' | 'high' | 'critical';
-export type ItCallCategory = 'hardware' | 'software' | 'network' | 'access' | 'asset-request' | 'other';
-
-export interface Asset {
-  id: string;
-  name: string;
-  type: AssetType;
-  manufacturer: string;
-  model: string;
-  serialNumber: string;
-  assetTag: string;
-  status: AssetStatus;
-  purchaseDate: string;
-  purchasePrice: number;
-  warrantyExpiry: string;
-  location: string;
-  assignedTo?: string;
-  vendorId?: string;
-  invoiceId?: string;
-  invoiceItemId?: string;
-  notes?: string;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  department: string;
-  locationId: string;
-  role: UserRole;
-  phone: string;
-  joinDate: string;
-  avatar?: string;
-  status: UserStatus;
-}
-
-export interface AssetHistoryEvent {
-  id: string;
-  assetId: string;
-  timestamp: string;
-  action: AssetHistoryAction;
-  performedBy?: string;
-  from?: string;
-  to?: string;
-  userId?: string;
-  locationId?: string;
-  reason?: string;
-  notes?: string;
-  cost?: number;
-  entityType?: string;
-  source?: string;
-  beforeValue?: string;
-  afterValue?: string;
-}
-
-export interface Location {
-  id: string;
-  name: string;
-  address: string;
-  type: 'office' | 'warehouse' | 'remote';
-  capacity: number;
-  manager: string;
-}
-
-export interface Vendor {
-  id: string;
-  name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  website: string;
-  category: string;
-  address?: string;
-  taxId?: string;
-  currency?: string;
-  contractExpiry?: string;
-}
-
-export interface Assignment {
-  id: string;
-  assetId: string;
-  assetName: string;
-  userId: string;
-  userName: string;
-  assignedDate: string;
-  returnDate?: string;
-  status: AssignmentStatus;
-  notes?: string;
-}
-
-export interface InvoiceLineItem {
-  id: string;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  taxRate: number;
-  assetType?: AssetType;
-  manufacturer?: string;
-  model?: string;
-  receivedQuantity: number;
-}
-
-export interface Invoice {
-  id: string;
-  vendorId: string;
-  invoiceNumber: string;
-  invoiceDate: string;
-  dueDate?: string;
-  currency: string;
-  paymentTerms?: string;
-  poNumber?: string;
-  status: InvoiceStatus;
-  notes?: string;
-  subtotal: number;
-  taxTotal: number;
-  total: number;
-  amountPaid: number;
-  paymentDate?: string;
-  paymentReference?: string;
-  paymentMethod?: string;
-  lineItems: InvoiceLineItem[];
-  createdAt: string;
-}
-
-export interface AuditLog {
-  id: string;
-  timestamp: string;
-  action: string;
-  entityType: string;
-  entityId: string;
-  entityName: string;
-  userId: string;
-  userName: string;
-  details: string;
-}
-
-export interface SoftwareLicense {
-  id: string;
-  name: string;
-  vendor: string;
-  licenseKey: string;
-  type: 'perpetual' | 'subscription';
-  totalSeats: number;
-  usedSeats: number;
-  expiryDate: string;
-  cost: number;
-}
-
-export interface MaintenanceRecord {
-  id: string;
-  assetId: string;
-  assetName: string;
-  date: string;
-  type: 'preventive' | 'repair' | 'upgrade';
-  description: string;
-  cost: number;
-  technician: string;
-  status: 'completed' | 'in-progress' | 'scheduled';
-}
-
-export interface ItCallLog {
-  id: string;
-  date: string;
-  time: string;
-  callerName: string;
-  department: string;
-  contactNumber: string;
-  category: ItCallCategory;
-  priority: ItCallPriority;
-  issue: string;
-  assetTag?: string;
-  assignedTo: string;
-  status: ItCallStatus;
-  resolution?: string;
-  closedAt?: string;
-}
+// Optional demo content. Nothing here is loaded automatically: an admin can import it
+// from the 'Demo & Data' page to explore the app, and erase it again afterwards.
+import type {
+  Asset, User, Location, Vendor, Assignment, Invoice, AuditLog, SoftwareLicense,
+  MaintenanceRecord, ItCallLog, AssetHistoryEvent
+} from './models';
 
 export const departments = [
   'Engineering',
@@ -529,7 +336,7 @@ export const vendors: Vendor[] = [
     phone: '+1 (800) 275-2273',
     website: 'https://www.apple.com',
     category: 'Hardware',
-    currency: 'USD - US Dollar',
+    currency: 'INR - Indian Rupee',
     contractExpiry: '2025-12-31'
   },
   {
@@ -540,7 +347,7 @@ export const vendors: Vendor[] = [
     phone: '+1 (800) 999-3355',
     website: 'https://www.dell.com',
     category: 'Hardware',
-    currency: 'USD - US Dollar',
+    currency: 'INR - Indian Rupee',
     contractExpiry: '2026-06-30'
   },
   {
@@ -551,7 +358,7 @@ export const vendors: Vendor[] = [
     phone: '+1 (800) 307-8469',
     website: 'https://www.microsoft.com',
     category: 'Software',
-    currency: 'USD - US Dollar',
+    currency: 'INR - Indian Rupee',
     contractExpiry: '2025-09-30'
   },
   {
@@ -562,7 +369,7 @@ export const vendors: Vendor[] = [
     phone: '+1 (800) 474-6836',
     website: 'https://www.hp.com',
     category: 'Hardware',
-    currency: 'USD - US Dollar',
+    currency: 'INR - Indian Rupee',
     contractExpiry: '2026-03-31'
   },
   {
@@ -573,7 +380,7 @@ export const vendors: Vendor[] = [
     phone: '+1 (855) 253-6686',
     website: 'https://www.lenovo.com',
     category: 'Hardware',
-    currency: 'USD - US Dollar',
+    currency: 'INR - Indian Rupee',
     contractExpiry: '2025-11-30'
   }
 ];
@@ -749,7 +556,7 @@ export const invoices: Invoice[] = [
     invoiceNumber: 'DELL-2026-00451',
     invoiceDate: '2026-09-10',
     dueDate: '2026-10-10',
-    currency: 'USD - US Dollar',
+    currency: 'INR - Indian Rupee',
     paymentTerms: 'Net 30',
     poNumber: 'PO-2026-0098',
     status: 'received',
@@ -994,65 +801,7 @@ export const itCallLogs: ItCallLog[] = [
 ];
 
 // Helper functions
-export function getAssetById(id: string): Asset | undefined {
-  return assets.find(a => a.id === id);
-}
 
-export function getUserById(id: string): User | undefined {
-  return users.find(u => u.id === id);
-}
-
-export function getLocationById(id: string): Location | undefined {
-  return locations.find(l => l.id === id);
-}
-
-export function getVendorById(id: string): Vendor | undefined {
-  return vendors.find(v => v.id === id);
-}
-
-export function getAssetsByStatus(status: AssetStatus): Asset[] {
-  return assets.filter(a => a.status === status);
-}
-
-export function getAssetsByType(type: AssetType): Asset[] {
-  return assets.filter(a => a.type === type);
-}
-
-export function getActiveAssignments(): Assignment[] {
-  return assignments.filter(a => a.status === 'active');
-}
-
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  }).format(amount);
-}
-
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-}
-
-export function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
-export function formatTitle(value: string): string {
-  return value
-    .split('-')
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
 
 // Initial lifecycle history derived from the existing sample assignments/purchase data.
 // New events are created by the UI and kept in shared App state.

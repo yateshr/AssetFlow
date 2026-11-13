@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { type Location, type User, type UserRole, type UserStatus, type Asset, type Assignment, type AssetHistoryEvent, formatDate } from '@/data/sampleData';
+import { type Location, type User, type UserRole, type UserStatus, type Asset, type Assignment, type AssetHistoryEvent, formatDate } from '@/data/models';
 import { IT_ASSET_MANAGER } from './assetLifecycle';
 import { DepartmentsPage } from './DepartmentsPage';
 

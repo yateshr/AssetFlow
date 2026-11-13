@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   type Invoice, type InvoiceLineItem, type InvoiceStatus, type Asset, type AssetType,
   type Vendor, type User, type AssetHistoryEvent, formatCurrency, formatDate
-} from '@/data/sampleData';
+} from '@/data/models';
 
 interface InvoicesPageProps {
   invoicesList: Invoice[];
@@ -39,7 +39,7 @@ const ASSET_TYPES: { value: AssetType; label: string }[] = [
 ].map(([value,label]) => ({ value: value as AssetType, label }));
 
 const CURRENCIES = [
-  'USD - US Dollar','INR - Indian Rupee','EUR - Euro','GBP - British Pound',
+  'INR - Indian Rupee','USD - US Dollar','EUR - Euro','GBP - British Pound',
   'AED - UAE Dirham','SGD - Singapore Dollar','AUD - Australian Dollar',
   'CAD - Canadian Dollar','JPY - Japanese Yen'
 ];
@@ -53,8 +53,8 @@ const emptyLine = (): EditableInvoiceLineItem => ({
 });
 
 function money(value: number, currency: string) {
-  const code = currency.split(' ')[0] || 'USD';
-  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(value); }
+  const code = currency.split(' ')[0] || 'INR';
+  try { return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency: code }).format(value); }
   catch { return formatCurrency(value); }
 }
 

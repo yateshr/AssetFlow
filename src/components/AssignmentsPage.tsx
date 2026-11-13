@@ -14,7 +14,7 @@ import {
   type User,
   type Location,
   formatDate 
-} from '@/data/sampleData';
+} from '@/data/models';
 
 interface AssignmentsPageProps {
   assignmentsList: Assignment[];

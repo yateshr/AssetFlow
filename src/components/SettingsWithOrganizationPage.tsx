@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsPage } from './SettingsPage';
 import { ConfigurationPage } from './ConfigurationPage';
-import type { Location, User } from '@/data/sampleData';
+import type { Location, User } from '@/data/models';
 
 interface SettingsWithOrganizationPageProps {
   usersList: User[];

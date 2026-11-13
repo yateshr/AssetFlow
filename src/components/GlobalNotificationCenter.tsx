@@ -1,9 +1,10 @@
+import { kv } from '@/lib/db';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bell, BellRing, CheckCircle2, Package, Wrench, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { Asset } from '@/data/sampleData';
+import type { Asset } from '@/data/models';
 
 type Notice = {
   id: string;
@@ -27,7 +28,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
 
   const loadRead = () => {
     try {
-      const raw = localStorage.getItem(readKey);
+      const raw = kv.getItem(readKey);
       setRead(raw ? JSON.parse(raw) : {});
     } catch {
       setRead({});
@@ -59,7 +60,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
     });
 
     try {
-      const stock = JSON.parse(localStorage.getItem('assetflow-stock') || '[]');
+      const stock = JSON.parse(kv.getItem('assetflow-stock') || '[]');
       stock.forEach((item: { id: string; name: string; quantity: number; minQuantity: number }) => {
         if (item.quantity <= item.minQuantity) {
           result.push({
@@ -74,7 +75,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
     } catch {}
 
     try {
-      const infra = JSON.parse(localStorage.getItem('assetflow-infrastructure') || '[]');
+      const infra = JSON.parse(kv.getItem('assetflow-infrastructure') || '[]');
       infra.forEach((item: { id: string; name: string; status: string }) => {
         if (item.status === 'offline') {
           result.push({
@@ -89,7 +90,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
     } catch {}
 
     try {
-      const requests = JSON.parse(localStorage.getItem('assetflow-asset-requests') || '[]');
+      const requests = JSON.parse(kv.getItem('assetflow-asset-requests') || '[]');
       requests.forEach((item: { id: string; assetType: string; status: string }) => {
         if (item.status === 'pending') {
           result.push({
@@ -104,7 +105,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
     } catch {}
 
     try {
-      const maintenance = JSON.parse(localStorage.getItem('assetflow-maintenance') || '[]');
+      const maintenance = JSON.parse(kv.getItem('assetflow-maintenance') || '[]');
       maintenance.forEach((item: { id: string; assetId: string; status: string }) => {
         if (item.status === 'open' || item.status === 'in-progress') {
           const asset = assets.find(a => a.id === item.assetId);
@@ -131,14 +132,14 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
   const markRead = (id: string) => {
     const next = { ...read, [id]: true };
     setRead(next);
-    localStorage.setItem(readKey, JSON.stringify(next));
+    kv.setItem(readKey, JSON.stringify(next));
   };
 
   const markAllRead = () => {
     const next = { ...read };
     notifications.forEach(n => { next[n.id] = true; });
     setRead(next);
-    localStorage.setItem(readKey, JSON.stringify(next));
+    kv.setItem(readKey, JSON.stringify(next));
   };
 
   return (
