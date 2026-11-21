@@ -21,7 +21,8 @@ pnpm install
 Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) running and the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
 
 ```bash
-pnpm db:start          # first run downloads images; applies supabase/migrations automatically
+pnpm db:start          # first run downloads images and creates the local database
+pnpm db:migrate        # applies any new AssetFlow database upgrades
 ```
 
 When it finishes it prints a **Publishable key**. Create `.env.local`:
@@ -36,9 +37,14 @@ Then skip to **4. Run it**. Handy extras: Studio (table browser) at <http://127.
 ### 2b. Hosted database (for real, multi-user use)
 
 1. Create a project at <https://supabase.com> (free tier is fine).
-2. Open **SQL Editor** → **New query**, paste the whole contents of
-   [`supabase/migrations/20260101000000_assetflow_schema.sql`](supabase/migrations/20260101000000_assetflow_schema.sql) and run it.
-   (Or, with the Supabase CLI: `supabase link` then `supabase db push`.)
+2. Link the project and install every database migration automatically:
+
+   ```bash
+   supabase link --project-ref <your-project-ref>
+   supabase db push
+   ```
+
+   This creates and upgrades all required tables, relationships, indexes, permissions and database functions. You do not manually create tables or IDs in the Supabase dashboard.
 3. **Authentication → Providers → Email**: leave email sign-in on. If you do not want to set up SMTP, turn **Confirm email** off, otherwise users must click a confirmation link first.
 
 ### 3. Connect the app (hosted only)
@@ -69,7 +75,7 @@ Open <http://localhost:4321>. On a fresh database you will see **Set up your wor
 | **manager** | Create and edit assets, vendors, invoices, assignments, licenses, locations |
 | **user** | View everything; log IT calls |
 
-These rules are enforced in the database (Row Level Security), not just hidden in the UI.
+These rules are enforced by database functions, not just hidden in the UI.
 
 ## Configure your company
 
@@ -83,7 +89,11 @@ It is a static site: build with `pnpm build` and host the `dist/` folder anywher
 
 ## How data is stored
 
-All business objects are JSON documents in one table, `records(collection, id, data)`, grouped by collection (`assets`, `users`, `vendors`, `invoices`, ...). Module-level settings live in the `kv` collection. This keeps upgrades simple, and you can query it with normal SQL/JSON operators or the Supabase dashboard.
+AssetFlow uses dedicated PostgreSQL tables for users, departments, locations, vendors, asset categories, assets, invoices, invoice line items, assignments, asset history, IT call logs, software licences, audit logs and master data. Important searchable fields are indexed and relationships use foreign keys.
+
+The application reads and writes these tables through validated database functions. When an end user creates a vendor, location, user, asset or invoice in AssetFlow, the corresponding database table is updated automatically. Database migrations create and upgrade the schema; normal users never need the Supabase dashboard.
+
+For compatibility during the relational migration, each business row also retains its complete application payload in a JSON column. The legacy `records` table is retained temporarily as rollback evidence but is no longer used by the application after the new migration is installed.
 
 ## Backups
 

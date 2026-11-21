@@ -4,10 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { User } from '@/data/models';
+import type { Location } from '@/data/models';
 
 interface DepartmentsPageProps {
   departmentsList: string[];
   onDepartmentsChange: (departments: string[]) => void;
+  departmentRecords?: Array<{ id: string; name: string; siteId?: string }>;
+  onDepartmentRecordsChange?: (departments: Array<{ id: string; name: string; siteId?: string }>) => void;
+  sitesList?: Location[];
   usersList: User[];
   onUsersChange: (users: User[]) => void;
 }
@@ -15,6 +19,9 @@ interface DepartmentsPageProps {
 export function DepartmentsPage({
   departmentsList,
   onDepartmentsChange,
+  departmentRecords = [],
+  onDepartmentRecordsChange,
+  sitesList = [],
   usersList,
   onUsersChange
 }: DepartmentsPageProps) {
@@ -22,6 +29,9 @@ export function DepartmentsPage({
   const [editingDepartment, setEditingDepartment] = useState<string | null>(null);
   const [editingDepartmentValue, setEditingDepartmentValue] = useState('');
   const [departmentError, setDepartmentError] = useState('');
+  const [siteId, setSiteId] = useState(sitesList[0]?.id || '');
+  const scopedDepartments = departmentRecords.filter(item => item.siteId === siteId).map(item => item.name);
+  const shownDepartments = departmentRecords.length ? scopedDepartments : departmentsList;
 
   const normalizeDepartment = (value: string) =>
     value.trim().replace(/\s+/g, ' ');
@@ -36,7 +46,7 @@ export function DepartmentsPage({
     }
 
     if (
-      departmentsList.some(
+      shownDepartments.some(
         item => item.toLowerCase() === department.toLowerCase()
       )
     ) {
@@ -44,9 +54,8 @@ export function DepartmentsPage({
       return;
     }
 
-    onDepartmentsChange(
-      [...departmentsList, department].sort((a, b) => a.localeCompare(b))
-    );
+    if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange([...departmentRecords, { id: crypto.randomUUID(), name: department, siteId }]);
+    else onDepartmentsChange([...departmentsList, department].sort((a, b) => a.localeCompare(b)));
     setNewDepartment('');
   };
 
@@ -69,7 +78,7 @@ export function DepartmentsPage({
 
     if (
       department.toLowerCase() !== editingDepartment.toLowerCase() &&
-      departmentsList.some(
+      shownDepartments.some(
         item => item.toLowerCase() === department.toLowerCase()
       )
     ) {
@@ -77,17 +86,12 @@ export function DepartmentsPage({
       return;
     }
 
-    onDepartmentsChange(
-      departmentsList
-        .map(item =>
-          item === editingDepartment ? department : item
-        )
-        .sort((a, b) => a.localeCompare(b))
-    );
+    if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange(departmentRecords.map(item => item.siteId === siteId && item.name === editingDepartment ? { ...item, name: department } : item));
+    else onDepartmentsChange(departmentsList.map(item => item === editingDepartment ? department : item).sort((a, b) => a.localeCompare(b)));
 
     onUsersChange(
       usersList.map(user =>
-        user.department === editingDepartment
+        user.siteId === siteId && user.department === editingDepartment
           ? { ...user, department }
           : user
       )
@@ -99,7 +103,7 @@ export function DepartmentsPage({
 
   const handleDeleteDepartment = (department: string) => {
     const usedByCount = usersList.filter(
-      user => user.department === department
+      user => user.siteId === siteId && user.department === department
     ).length;
 
     setDepartmentError('');
@@ -112,9 +116,8 @@ export function DepartmentsPage({
     }
 
     if (confirm(`Delete ${department}?`)) {
-      onDepartmentsChange(
-        departmentsList.filter(item => item !== department)
-      );
+      if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange(departmentRecords.filter(item => !(item.siteId === siteId && item.name === department)));
+      else onDepartmentsChange(departmentsList.filter(item => item !== department));
     }
   };
 
@@ -124,7 +127,7 @@ export function DepartmentsPage({
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Departments</h1>
           <p className="text-muted-foreground">
-            Manage the department choices used when adding users and logging IT calls
+            Each office, plant and warehouse maintains its own department list.
           </p>
         </div>
       </div>
@@ -133,12 +136,13 @@ export function DepartmentsPage({
         <CardHeader>
           <CardTitle>Departments</CardTitle>
           <CardDescription>
-            Add, edit, or remove departments used throughout AssetFlow.
+            Choose a site, then add, edit or remove the departments used there.
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="grid gap-2 sm:grid-cols-[220px_1fr_auto]">
+            <select className="h-10 rounded-md border bg-background px-3 text-sm" value={siteId} onChange={event => { setSiteId(event.target.value); setEditingDepartment(null); setDepartmentError(''); }}><option value="">Select site</option>{sitesList.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
             <Input
               value={newDepartment}
               onChange={(event) => setNewDepartment(event.target.value)}
@@ -161,12 +165,12 @@ export function DepartmentsPage({
           )}
 
           <div className="rounded-md border border-border">
-            {departmentsList.length === 0 ? (
+            {!siteId ? (<div className="p-6 text-center text-sm text-muted-foreground">Select a site to manage its departments.</div>) : shownDepartments.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 No departments created yet.
               </div>
             ) : (
-              departmentsList.map((department) => {
+              shownDepartments.map((department) => {
                 const usedByCount = usersList.filter(
                   user => user.department === department
                 ).length;

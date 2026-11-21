@@ -1,4 +1,6 @@
-import { kv } from '@/lib/db';
+import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
+import { useCollection } from '@/lib/db';
+import type { MasterDataOption } from '@/data/masterData';
 import { useEffect, useState } from 'react';
 import { 
   Plus, 
@@ -23,15 +25,19 @@ import {
   AlertTriangle,
   CheckCircle2,
   Archive,
-  RotateCcw
+  RotateCcw,
+  MoreHorizontal,
+  Building2
 } from 'lucide-react';
 import { AssetHistoryDialog } from './AssetHistoryDialog';
+import { custodianName } from './assetLifecycle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { 
   type Asset, 
   type AssetType, 
@@ -39,6 +45,9 @@ import {
   type AssetHistoryEvent,
   type User,
   type Location,
+  type AssetCategory,
+  type Invoice,
+  type Company,
   formatDate,
   formatCurrency
 } from '@/data/models';
@@ -47,24 +56,30 @@ interface AssetsPageProps {
   assetsList: Asset[];
   onAssetsChange: (assets: Asset[]) => void;
   usersList: User[];
-  locationsList: Location[];
+  sitesList: Location[];
   history: AssetHistoryEvent[];
   onHistoryChange: (events: AssetHistoryEvent[]) => void;
   currentUser: User;
   initialFilter?: { status?: AssetStatus; warranty?: 'expired' | '30' | '60' | '90'; type?: AssetType } | null;
   onInitialFilterConsumed?: () => void;
+  assetCategories: AssetCategory[];
+  invoices: Invoice[];
+  companies: Company[];
 }
 
 export function AssetsPage({
   assetsList,
   onAssetsChange,
   usersList,
-  locationsList,
+  sitesList,
   history,
   onHistoryChange,
   currentUser,
   initialFilter,
   onInitialFilterConsumed,
+  assetCategories,
+  invoices,
+  companies,
 }: AssetsPageProps) {
   const assets = assetsList;
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,9 +99,18 @@ export function AssetsPage({
   });
   const [undoAsset, setUndoAsset] = useState<(Asset & { deletedAt: string; deletedBy?: string }) | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [viewingAsset, setViewingAsset] = useState<Asset | null>(null);
   const [historyAsset, setHistoryAsset] = useState<Asset | null>(null);
+  const [transferringAsset,setTransferringAsset]=useState<Asset|null>(null);
+  const [movingAsset,setMovingAsset]=useState<Asset|null>(null);
+  const [reversingReceipt,setReversingReceipt]=useState<Asset|null>(null);
+  const [assetTagRules,setAssetTagRules]=useState<AssetTagSiteSeries[]>([]);
+  const isSuperAdmin=['super_admin','admin'].includes(currentUser.role);
+  const companyAccessRole=companies.find(company=>company.id===getActiveCompanyId())?.accessRole;
+  const canCreateInvoiceAssets=isSuperAdmin||['admin','manager','technician'].includes(companyAccessRole||'');
+  useEffect(()=>{void loadAssetTagSiteSeries().then(setAssetTagRules).catch(error=>console.error('Could not load Site Series',error));},[]);
 
   const warrantyDays = (asset: Asset) => {
     const expiry = new Date(asset.warrantyExpiry).getTime();
@@ -106,12 +130,12 @@ export function AssetsPage({
     const q = searchQuery.toLowerCase();
     const assignedName = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo)?.name || '' : '';
     const searchTerms = q.split(/\s+/).filter(Boolean);
-    const searchHaystack = [asset.name, asset.assetTag, asset.serialNumber, asset.manufacturer, asset.model, asset.location, assignedName, asset.status, asset.type]
+    const searchHaystack = [asset.name, asset.assetTag, asset.serialNumber, asset.manufacturer, asset.model, asset.siteId, assignedName, asset.status, asset.type]
       .join(' ').toLowerCase();
     const matchesSearch = searchTerms.length === 0 || searchTerms.every(term => searchHaystack.includes(term));
     const matchesStatus = statusFilter === 'all' || asset.status === statusFilter;
     const matchesType = typeFilter === 'all' || asset.type === typeFilter;
-    const matchesLocation = locationFilter === 'all' || asset.location === locationFilter;
+    const matchesLocation = locationFilter === 'all' || asset.siteId === locationFilter;
     const assignedUser = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo) : undefined;
     const matchesDepartment = departmentFilter === 'all' || assignedUser?.department === departmentFilter;
     const matchesMinPrice = minPrice === '' || asset.purchasePrice >= Number(minPrice);
@@ -248,7 +272,7 @@ export function AssetsPage({
 
   const handleExport = () => {
     const csvContent = [
-      ['ID', 'Name', 'Type', 'Manufacturer', 'Model', 'Serial Number', 'Asset Tag', 'Status', 'Purchase Date', 'Purchase Price', 'Warranty Expiry', 'Location', 'Assigned To'].join(','),
+      ['ID', 'Name', 'Type', 'Manufacturer', 'Model', 'Serial Number', 'Asset Tag', 'Status', 'Purchase Date', 'Purchase Price', 'Warranty Expiry', 'Site', 'Assigned To'].join(','),
       ...filteredAssets.map(a => [
         a.id,
         a.name,
@@ -261,7 +285,7 @@ export function AssetsPage({
         a.purchaseDate,
         a.purchasePrice,
         a.warrantyExpiry,
-        a.location,
+        a.siteId,
         a.assignedTo ? usersList.find(u => u.id === a.assignedTo)?.name || a.assignedTo : ''
       ].join(','))
     ].join('\n');
@@ -291,10 +315,14 @@ export function AssetsPage({
             <Archive className="h-4 w-4 mr-2" />
             Archived ({archivedAssets.length})
           </Button>
-          <Button onClick={() => setShowCreateModal(true)}>
+          {isSuperAdmin && <Button onClick={() => setShowCreateModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Asset
-          </Button>
+          </Button>}
+          {canCreateInvoiceAssets && <Button variant="outline" onClick={() => setShowBatchModal(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Batch
+          </Button>}
         </div>
       </div>
 
@@ -319,7 +347,7 @@ export function AssetsPage({
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="sticky top-0 z-20 shadow-sm">
         <CardContent className="py-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="relative sm:col-span-2 lg:col-span-2">
@@ -360,22 +388,15 @@ export function AssetsPage({
               className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Types</option>
-              <option value="laptop">Laptop</option>
-              <option value="desktop">Desktop</option>
-              <option value="monitor">Monitor</option>
-              <option value="phone">Phone</option>
-              <option value="tablet">Tablet</option>
-              <option value="printer">Printer</option>
-              <option value="server">Server</option>
-              <option value="accessory">Accessory</option>
+              {assetCategories.filter(category=>category.active&&category.name.trim()).map(category=><option key={category.id} value={category.id}>{category.name}</option>)}
             </select>
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
-              <option value="all">All Locations</option>
-              {locationsList.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+              <option value="all">All Sites</option>
+              {sitesList.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
             </select>
             <select
               value={departmentFilter}
@@ -392,11 +413,57 @@ export function AssetsPage({
               <Button type="button" variant="ghost" size="sm" onClick={clearFilters} disabled={activeFilterCount === 0}>Clear filters</Button>
             </div>
           </div>
+          {activeFilterCount > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+              {searchQuery.trim() && <FilterChip label={`Search: ${searchQuery.trim()}`} onRemove={() => setSearchQuery('')} />}
+              {statusFilter !== 'all' && <FilterChip label={`Status: ${statusFilter}`} onRemove={() => setStatusFilter('all')} />}
+              {warrantyFilter !== 'all' && <FilterChip label={`Warranty: ${warrantyFilter === 'expired' ? 'Expired' : `${warrantyFilter} days`}`} onRemove={() => setWarrantyFilter('all')} />}
+              {typeFilter !== 'all' && <FilterChip label={`Type: ${typeFilter}`} onRemove={() => setTypeFilter('all')} />}
+              {locationFilter !== 'all' && <FilterChip label={`Site: ${sitesList.find(item => item.id === locationFilter)?.name || locationFilter}`} onRemove={() => setLocationFilter('all')} />}
+              {departmentFilter !== 'all' && <FilterChip label={`Department: ${departmentFilter}`} onRemove={() => setDepartmentFilter('all')} />}
+              {minPrice && <FilterChip label={`Min: ${formatCurrency(Number(minPrice))}`} onRemove={() => setMinPrice('')} />}
+              {maxPrice && <FilterChip label={`Max: ${formatCurrency(Number(maxPrice))}`} onRemove={() => setMaxPrice('')} />}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Assets Table */}
-      <Card>
+      {/* Mobile asset cards */}
+      <div className="space-y-3 md:hidden">
+        {filteredAssets.length === 0 ? (
+          <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No assets found</CardContent></Card>
+        ) : filteredAssets.map(asset => {
+          const Icon = getAssetIcon(asset.type);
+          const location = sitesList.find(item => item.id === asset.siteId);
+          const assignedUser = asset.assignedTo ? usersList.find(item => item.id === asset.assignedTo) : null;
+          const days = warrantyDays(asset);
+          return (
+            <Card key={asset.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted"><Icon className="h-5 w-5 text-muted-foreground" /></div>
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setViewingAsset(asset)}>
+                    <p className="truncate font-semibold">{asset.name}</p>
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">{asset.assetTag} · {asset.manufacturer} {asset.model}</p>
+                  </button>
+                  <AssetActionMenu asset={asset} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Badge variant="outline" className={getStatusBadge(asset.status)}>{asset.status === 'maintenance' ? 'Under Repair' : asset.status}</Badge>
+                  {days !== null && <Badge variant={days < 0 ? 'destructive' : 'outline'}>{days < 0 ? 'Warranty expired' : `${days}d warranty`}</Badge>}
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div><dt className="text-xs text-muted-foreground">Assigned to</dt><dd className="mt-0.5 truncate">{assignedUser?.name || 'Unassigned'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Site</dt><dd className="mt-0.5 truncate">{location?.name || 'Not set'}</dd></div>
+                </dl>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Desktop assets table */}
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -406,7 +473,7 @@ export function AssetsPage({
                 <TableHead>Asset Tag</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Warranty</TableHead>
-                <TableHead>Location</TableHead>
+                <TableHead>Site</TableHead>
                 <TableHead>Assigned To</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -421,7 +488,7 @@ export function AssetsPage({
               ) : (
                 filteredAssets.map((asset) => {
                   const Icon = getAssetIcon(asset.type);
-                  const location = locationsList.find(l => l.id === asset.location);
+                  const location = sitesList.find(l => l.id === asset.siteId);
                   const assignedUser = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo) : null;
                   
                   return (
@@ -462,18 +529,8 @@ export function AssetsPage({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => setViewingAsset(asset)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon-sm" title="View History" onClick={() => setHistoryAsset(asset)}>
-                            <History className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => setEditingAsset(asset)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(asset.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setViewingAsset(asset)}><Eye className="mr-1.5 h-4 w-4" />View</Button>
+                          <AssetActionMenu asset={asset} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -528,15 +585,19 @@ export function AssetsPage({
         </DialogContent>
       </Dialog>
 
-      {/* Create/Edit Modal */}
+      <AssetTransferDialog asset={transferringAsset} companies={companies.filter(c=>c.active&&c.id!==getActiveCompanyId())} onClose={()=>setTransferringAsset(null)} onTransfer={async(targetCompanyId,newAssetTag,reason)=>{if(!transferringAsset)return;try{await transferAsset({sourceCompanyId:getActiveCompanyId()!,targetCompanyId,assetId:transferringAsset.id,newAssetTag,reason});window.location.reload();}catch(error){if(!(error instanceof Error)||!error.message.includes('Only the Super Admin'))throw error;await requestTransfer({requestType:'asset',sourceCompanyId:getActiveCompanyId()!,sourceSiteId:transferringAsset.siteId,targetCompanyId,entityId:transferringAsset.id,newAssetTag,reason});}}} />
+      <MoveAssetDialog asset={movingAsset} locations={sitesList} onClose={()=>setMovingAsset(null)} onMove={async(targetSiteId,reason)=>{const companyId=getActiveCompanyId();if(!movingAsset||!companyId)return;if(movingAsset.assignedTo)throw new Error('Return this assigned asset before moving it to another site.');if(['super_admin','admin'].includes(currentUser.role)){onAssetsChange(assets.map(asset=>asset.id===movingAsset.id?{...asset,siteId:targetSiteId,status:'available'}:asset));onHistoryChange([...history,{id:`H-${Date.now()}-MOVE`,assetId:movingAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:movingAsset.siteId,to:targetSiteId,siteId:targetSiteId,reason,notes:'Asset moved by Super Admin.'}]);}else{await requestTransfer({requestType:'asset',sourceCompanyId:companyId,sourceSiteId:movingAsset.siteId,targetCompanyId:companyId,targetSiteId,entityId:movingAsset.id,newAssetTag:movingAsset.assetTag,reason});}}} />
+      <ReverseReceiptDialog asset={reversingReceipt} onClose={()=>setReversingReceipt(null)} onReverse={async(reason)=>{if(!reversingReceipt)return;const updated=await reverseInvoiceReceipt(reversingReceipt.id,reason) as Asset;onAssetsChange(assets.map(asset=>asset.id===updated.id?updated:asset));onHistoryChange([...history,{id:`H-${Date.now()}-RECEIPT-REVERSED`,assetId:updated.id,timestamp:new Date().toISOString(),action:'Updated',performedBy:currentUser.id,reason,notes:'Invoice receipt reversed by Super Admin.'}]);}} />
+
+      {/* Create/Edit workspace */}
       <Dialog open={showCreateModal || !!editingAsset} onOpenChange={(open) => {
         if (!open) {
           setShowCreateModal(false);
           setEditingAsset(null);
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="!left-1/2 !top-1/2 !h-auto !max-h-[calc(100dvh-2rem)] !w-[calc(100vw-2rem)] !max-w-[1100px] !-translate-x-1/2 !-translate-y-1/2 overflow-y-auto gap-0 p-0 sm:!p-0">
+          <DialogHeader className="sticky top-0 z-10 border-b bg-background/95 px-5 py-5 pr-14 backdrop-blur sm:px-7">
             <DialogTitle>{editingAsset ? 'Edit Asset' : 'Create New Asset'}</DialogTitle>
             <DialogDescription>
               {editingAsset ? 'Update the asset information below.' : 'Fill in the details to add a new asset to your inventory.'}
@@ -545,8 +606,12 @@ export function AssetsPage({
           <AssetForm 
             asset={editingAsset}
             usersList={usersList}
-            locationsList={locationsList}
-            onSubmit={(data, detailedProfile) => {
+            sitesList={sitesList}
+            assetCategories={assetCategories}
+            assetTagRules={assetTagRules}
+            defaultSiteId={['super_admin','admin'].includes(currentUser.role) ? '' : currentUser.siteId}
+            canChooseLocation={['super_admin','admin'].includes(currentUser.role)}
+            onSubmit={async (data, detailedProfile) => {
               // Prevent duplicate assets. Asset Tag and Serial Number must be unique
               // across the inventory (case-insensitive, ignoring surrounding spaces).
               const normalizeUniqueValue = (value: string) => value.trim().toLowerCase();
@@ -608,8 +673,8 @@ export function AssetsPage({
                       timestamp: new Date().toISOString(),
                       action: normalizedData.assignedTo ? 'Assigned' as const : 'Returned' as const,
                       performedBy: currentUser.id,
-                      from: previous.assignedTo ? usersList.find(u => u.id === previous.assignedTo)?.name : 'IT Asset Manager',
-                      to: normalizedData.assignedTo ? usersList.find(u => u.id === normalizedData.assignedTo)?.name : 'IT Asset Manager',
+                      from: previous.assignedTo ? usersList.find(u => u.id === previous.assignedTo)?.name : custodianName(),
+                      to: normalizedData.assignedTo ? usersList.find(u => u.id === normalizedData.assignedTo)?.name : custodianName(),
                       userId: normalizedData.assignedTo || previous.assignedTo,
                       notes: 'Asset assignment changed from Asset Details.'
                     });
@@ -635,8 +700,8 @@ export function AssetsPage({
                     timestamp: new Date().toISOString(),
                     action: 'Updated',
                     performedBy: currentUser.id,
-                    from: JSON.stringify({ name: previous.name, type: previous.type, manufacturer: previous.manufacturer, model: previous.model, serialNumber: previous.serialNumber, assetTag: previous.assetTag, purchaseDate: previous.purchaseDate, purchasePrice: previous.purchasePrice, warrantyExpiry: previous.warrantyExpiry, condition: previous.condition, accessories: previous.accessories, amcProvider: previous.amcProvider, amcExpiry: previous.amcExpiry, insuranceProvider: previous.insuranceProvider, insuranceExpiry: previous.insuranceExpiry, location: previous.location, notes: previous.notes }),
-                    to: JSON.stringify({ name: normalizedData.name, type: normalizedData.type, manufacturer: normalizedData.manufacturer, model: normalizedData.model, serialNumber: normalizedData.serialNumber, assetTag: normalizedData.assetTag, purchaseDate: normalizedData.purchaseDate, purchasePrice: normalizedData.purchasePrice, warrantyExpiry: normalizedData.warrantyExpiry, condition: normalizedData.condition, accessories: normalizedData.accessories, amcProvider: normalizedData.amcProvider, amcExpiry: normalizedData.amcExpiry, insuranceProvider: normalizedData.insuranceProvider, insuranceExpiry: normalizedData.insuranceExpiry, location: normalizedData.location, notes: normalizedData.notes }),
+                    from: JSON.stringify({ name: previous.name, type: previous.type, manufacturer: previous.manufacturer, model: previous.model, serialNumber: previous.serialNumber, assetTag: previous.assetTag, purchaseDate: previous.purchaseDate, purchasePrice: previous.purchasePrice, warrantyExpiry: previous.warrantyExpiry, condition: previous.condition, accessories: previous.accessories, amcProvider: previous.amcProvider, amcExpiry: previous.amcExpiry, insuranceProvider: previous.insuranceProvider, insuranceExpiry: previous.insuranceExpiry, siteId: previous.siteId, notes: previous.notes }),
+                    to: JSON.stringify({ name: normalizedData.name, type: normalizedData.type, manufacturer: normalizedData.manufacturer, model: normalizedData.model, serialNumber: normalizedData.serialNumber, assetTag: normalizedData.assetTag, purchaseDate: normalizedData.purchaseDate, purchasePrice: normalizedData.purchasePrice, warrantyExpiry: normalizedData.warrantyExpiry, condition: normalizedData.condition, accessories: normalizedData.accessories, amcProvider: normalizedData.amcProvider, amcExpiry: normalizedData.amcExpiry, insuranceProvider: normalizedData.insuranceProvider, insuranceExpiry: normalizedData.insuranceExpiry, siteId: normalizedData.siteId, notes: normalizedData.notes }),
                     reason: 'Asset details updated.',
                     source: 'assets',
                     entityType: 'Asset',
@@ -646,15 +711,25 @@ export function AssetsPage({
                   if (events.length) onHistoryChange([...history, ...events]);
                 }
               } else {
+                const category=assetCategories.find(item=>item.id===normalizedData.type);
                 const existingNumbers = [...assets, ...archivedAssets]
                   .map(a => Number(a.id.match(/(\d+)$/)?.[1] || 0))
                   .filter(Number.isFinite);
                 const nextNumber = Math.max(0, ...existingNumbers) + 1;
-                const newAsset: Asset = {
+                const draftAsset: Asset = {
                   id: `AST-${String(nextNumber).padStart(3, '0')}`,
                   ...normalizedData
                 };
+                let newAsset: Asset;
+                try {
+                  const [created]=await createTaggedAssets(draftAsset.siteId,category?.code||category?.name||draftAsset.type,[draftAsset]);
+                  newAsset=created as Asset;
+                } catch (error) {
+                  window.alert(error instanceof Error ? error.message : 'Could not create the asset.');
+                  return;
+                }
                 onAssetsChange([...assets, newAsset]);
+                void loadAssetTagSiteSeries().then(setAssetTagRules);
                 try {
                   const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
                   saved[newAsset.id] = { ...detailedProfile, assetId: newAsset.id, enabled: detailedProfile.enabled };
@@ -668,8 +743,8 @@ export function AssetsPage({
                     timestamp: new Date().toISOString(),
                     action: 'Purchased',
                     performedBy: currentUser.id,
-                    to: 'IT Asset Manager',
-                    locationId: newAsset.location,
+                    to: custodianName(),
+                    siteId: newAsset.siteId,
                     cost: newAsset.purchasePrice,
                     notes: 'Asset created in inventory.'
                   },
@@ -679,8 +754,8 @@ export function AssetsPage({
                     timestamp: new Date().toISOString(),
                     action: 'Received',
                     performedBy: currentUser.id,
-                    to: 'IT Asset Manager',
-                    locationId: newAsset.location
+                    to: custodianName(),
+                    siteId: newAsset.siteId
                   },
                   ...(newAsset.assignedTo ? [{
                     id: `H-${Date.now()}-ASSIGN`,
@@ -688,7 +763,7 @@ export function AssetsPage({
                     timestamp: new Date().toISOString(),
                     action: 'Assigned' as const,
                     performedBy: currentUser.id,
-                    from: 'IT Asset Manager',
+                    from: custodianName(),
                     to: usersList.find(u => u.id === newAsset.assignedTo)?.name,
                     userId: newAsset.assignedTo
                   }] : [])
@@ -705,6 +780,8 @@ export function AssetsPage({
         </DialogContent>
       </Dialog>
 
+      <BatchAssetDialog open={showBatchModal} onClose={()=>setShowBatchModal(false)} sitesList={sitesList} assetCategories={assetCategories} invoices={invoices} isSuperAdmin={isSuperAdmin} defaultSiteId={isSuperAdmin?'':currentUser.siteId} canChooseSite={isSuperAdmin} existingAssets={[...assets,...archivedAssets]} onCreated={created=>{onAssetsChange([...assets,...created]);setShowBatchModal(false);}} />
+
       {/* View Detail Modal */}
       <Dialog open={!!viewingAsset} onOpenChange={(open) => !open && setViewingAsset(null)}>
         <DialogContent className="max-w-2xl">
@@ -712,7 +789,7 @@ export function AssetsPage({
             <DialogTitle>Asset Details</DialogTitle>
             <DialogDescription>Complete information about this asset</DialogDescription>
           </DialogHeader>
-          {viewingAsset && <AssetDetail asset={viewingAsset} usersList={usersList} locationsList={locationsList} />}
+          {viewingAsset && <AssetDetail asset={viewingAsset} usersList={usersList} sitesList={sitesList} />}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewingAsset(null)}>Close</Button>
             <Button onClick={() => {
@@ -729,13 +806,89 @@ export function AssetsPage({
       <AssetHistoryDialog
         asset={historyAsset}
         users={usersList}
-        locations={locationsList}
+        locations={sitesList}
         history={history}
         open={!!historyAsset}
         onOpenChange={(open) => !open && setHistoryAsset(null)}
       />
     </div>
   );
+}
+
+function BatchAssetDialog({open,onClose,sitesList,assetCategories,invoices,isSuperAdmin,defaultSiteId,canChooseSite,existingAssets,onCreated}:{open:boolean;onClose:()=>void;sitesList:Location[];assetCategories:AssetCategory[];invoices:Invoice[];isSuperAdmin:boolean;defaultSiteId:string;canChooseSite:boolean;existingAssets:Asset[];onCreated:(assets:Asset[])=>void}) {
+  const [siteId,setSiteId]=useState(defaultSiteId); const [type,setType]=useState(''); const [name,setName]=useState(''); const [manufacturer,setManufacturer]=useState(''); const [model,setModel]=useState(''); const [serials,setSerials]=useState(''); const [invoiceId,setInvoiceId]=useState(''); const [invoiceItemId,setInvoiceItemId]=useState(''); const [purchaseDate,setPurchaseDate]=useState(new Date().toISOString().slice(0,10)); const [purchasePrice,setPurchasePrice]=useState('0'); const [warrantyExpiry,setWarrantyExpiry]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
+  useEffect(()=>{if(open){setSiteId(defaultSiteId);setType(assetCategories.find(x=>x.active)?.id||'');setName('');setManufacturer('');setModel('');setSerials('');setInvoiceId('');setInvoiceItemId('');setPurchaseDate(new Date().toISOString().slice(0,10));setPurchasePrice('0');setWarrantyExpiry('');setError('');}},[open,defaultSiteId]);
+  const invoice=invoices.find(x=>x.id===invoiceId); const lines=(invoice?.lineItems||[]).filter(line=>!line.assetType||line.assetType===type); const selectedLine=lines.find(line=>line.id===invoiceItemId); const remaining=selectedLine?Math.max(0,selectedLine.quantity-selectedLine.receivedQuantity):0;
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();const list=serials.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean);const category=assetCategories.find(x=>x.id===type);if(!siteId||!category||!name||!manufacturer||!model||!list.length||(!isSuperAdmin&&(!invoiceId||!invoiceItemId))){setError('Complete all fields and select an invoice line.');return;}if(invoiceId&&(!invoiceItemId||list.length>remaining)){setError(`This invoice line has only ${remaining} item(s) remaining.`);return;}if(new Set(list.map(x=>x.toLowerCase())).size!==list.length){setError('Each serial number must be unique.');return;}setBusy(true);setError('');try{const highest=Math.max(0,...existingAssets.map(a=>Number(a.id.match(/(\d+)$/)?.[1]||0)));const drafts=list.map((serial,index)=>({id:`AST-${String(highest+index+1).padStart(3,'0')}`,name:list.length===1?name:`${name} ${index+1}`,type,manufacturer,model,serialNumber:serial,assetTag:'',status:'available',purchaseDate,purchasePrice:Number(purchasePrice)||0,warrantyExpiry,siteId,invoiceId:invoice?.id||undefined,invoiceItemId:invoiceItemId||undefined,vendorId:invoice?.vendorId||undefined,notes:''}));const created=await createTaggedAssets(siteId,category.code||category.name,drafts,invoiceId,invoiceItemId) as Asset[];onCreated(created);}catch(err){setError(err instanceof Error?err.message:'Could not create the batch.');}finally{setBusy(false);}};
+  return <Dialog open={open} onOpenChange={value=>!value&&onClose()}><DialogContent className="max-w-xl"><form onSubmit={submit}><DialogHeader><DialogTitle>Create asset batch</DialogTitle><DialogDescription>{isSuperAdmin?'Select an invoice line or create a direct purchase.':'Select an approved invoice line for your Site.'}</DialogDescription></DialogHeader><div className="grid gap-4 py-5 sm:grid-cols-2"><label className="space-y-1 text-sm">Site {canChooseSite?<select required className="h-10 w-full rounded-md border bg-background px-3" value={siteId} onChange={e=>{setSiteId(e.target.value);setInvoiceId('');setInvoiceItemId('')}}><option value="">Select site</option>{sitesList.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select>:<Input value={sitesList.find(s=>s.id===siteId)?.name||'Your assigned site'} disabled/>}</label><label className="space-y-1 text-sm">Asset type<select required className="h-10 w-full rounded-md border bg-background px-3" value={type} onChange={e=>{setType(e.target.value);setInvoiceItemId('')}}>{assetCategories.filter(x=>x.active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label className="space-y-1 text-sm sm:col-span-2">Vendor invoice<select required={!isSuperAdmin} className="h-10 w-full rounded-md border bg-background px-3" value={invoiceId} onChange={e=>{setInvoiceId(e.target.value);setInvoiceItemId('')}}>{isSuperAdmin&&<option value="">Direct purchase — no invoice</option>}{invoices.filter(x=>x.siteId===siteId).map(x=><option key={x.id} value={x.id}>{x.invoiceNumber} · {x.invoiceDate}</option>)}</select></label>{invoice&&<label className="space-y-1 text-sm sm:col-span-2">Invoice line<select required className="h-10 w-full rounded-md border bg-background px-3" value={invoiceItemId} onChange={e=>setInvoiceItemId(e.target.value)}><option value="">Select line item</option>{lines.map(line=><option key={line.id} value={line.id}>{line.description} · remaining {Math.max(0,line.quantity-line.receivedQuantity)} of {line.quantity}</option>)}</select></label>}<label className="space-y-1 text-sm">Item name<Input required value={name} onChange={e=>setName(e.target.value)} placeholder="Keyboard"/></label><label className="space-y-1 text-sm">Manufacturer<Input required value={manufacturer} onChange={e=>setManufacturer(e.target.value)}/></label><label className="space-y-1 text-sm sm:col-span-2">Model<Input required value={model} onChange={e=>setModel(e.target.value)}/></label><label className="space-y-1 text-sm">Purchase date<Input type="date" value={purchaseDate} onChange={e=>setPurchaseDate(e.target.value)}/></label><label className="space-y-1 text-sm">Unit price<Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e=>setPurchasePrice(e.target.value)}/></label><label className="space-y-1 text-sm sm:col-span-2">Warranty expiry (optional)<Input type="date" value={warrantyExpiry} onChange={e=>setWarrantyExpiry(e.target.value)}/></label><label className="space-y-1 text-sm sm:col-span-2">Serial numbers<textarea required className="min-h-24 w-full rounded-md border bg-background p-3 text-sm" value={serials} onChange={e=>setSerials(e.target.value)} placeholder={'One serial per line\nKBD-001\nKBD-002'}/></label>{error&&<p role="alert" className="text-sm text-destructive sm:col-span-2">{error}</p>}</div><DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={busy}>{busy?'Creating…':'Create batch'}</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 py-1 text-xs font-medium capitalize">
+      {label}
+      <button type="button" onClick={onRemove} className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Remove ${label} filter`}>
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
+
+function AssetActionMenu({
+  asset,
+  onView,
+  onHistory,
+  onEdit,
+  onMove,
+  onTransfer,
+  onReverseReceipt,
+  onArchive,
+  hideView = false,
+}: {
+  asset: Asset;
+  onView: () => void;
+  onHistory: () => void;
+  onEdit: () => void;
+  onMove: () => void;
+  onTransfer: () => void;
+  onReverseReceipt?: () => void;
+  onArchive: () => void;
+  hideView?: boolean;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${asset.name}`}><MoreHorizontal className="h-4 w-4" /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {!hideView && <DropdownMenuItem onSelect={onView}><Eye />View details</DropdownMenuItem>}
+        <DropdownMenuItem onSelect={onEdit}><Edit />Edit asset</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onHistory}><History />View history</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onMove}><History />Move to site</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onTransfer}><Building2 />Transfer to another company</DropdownMenuItem>
+        {onReverseReceipt&&<DropdownMenuItem onSelect={onReverseReceipt}>Reverse invoice receipt</DropdownMenuItem>}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onSelect={onArchive}><Trash2 />Archive asset</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ReverseReceiptDialog({asset,onClose,onReverse}:{asset:Asset|null;onClose:()=>void;onReverse:(reason:string)=>Promise<void>}) { const [reason,setReason]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');useEffect(()=>{setReason('');setError('');},[asset?.id]);const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{await onReverse(reason);onClose();}catch(err){setError(err instanceof Error?err.message:'Could not reverse receipt.');setBusy(false);}};return <Dialog open={!!asset} onOpenChange={open=>!open&&onClose()}><DialogContent><form onSubmit={submit}><DialogHeader><DialogTitle>Reverse invoice receipt</DialogTitle><DialogDescription>This removes the invoice-line link and reduces its received quantity by one. The asset remains in inventory.</DialogDescription></DialogHeader><label className="block space-y-2 py-5 text-sm">Correction reason<Input required minLength={3} value={reason} onChange={e=>setReason(e.target.value)} /></label>{error&&<p className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={busy} variant="destructive">{busy?'Reversing…':'Reverse receipt'}</Button></DialogFooter></form></DialogContent></Dialog>}
+
+function AssetTransferDialog({asset,companies,onClose,onTransfer}:{asset:Asset|null;companies:Company[];onClose:()=>void;onTransfer:(companyId:string,newTag:string,reason:string)=>Promise<void>}) {
+  const [companyId,setCompanyId]=useState(''); const [tag,setTag]=useState(''); const [reason,setReason]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
+  useEffect(()=>{if(asset){setCompanyId(companies[0]?.id||'');setTag(asset.assetTag);setReason('');setError('');setBusy(false);}},[asset?.id]);
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{await onTransfer(companyId,tag.trim(),reason.trim());}catch(err){setError(err instanceof Error?err.message:String(err));setBusy(false);}};
+  return <Dialog open={!!asset} onOpenChange={open=>!open&&onClose()}><DialogContent><form onSubmit={submit}><DialogHeader><DialogTitle>Transfer asset to another company</DialogTitle><DialogDescription>Super Admin completes the transfer immediately. Site IT Admins submit this as a transfer request for Super Admin approval.</DialogDescription></DialogHeader><div className="space-y-4 py-5"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><span className="font-medium">{asset?.name}</span><span className="ml-2 font-mono text-xs text-muted-foreground">{asset?.assetTag}</span></div>{companies.length===0&&<p className="rounded-md border border-chart-5/30 bg-chart-5/10 p-3 text-sm">Create another active company in Settings before transferring this asset.</p>}<label className="block space-y-1.5 text-sm">Target company<select required className="h-10 w-full rounded-md border bg-background px-3" value={companyId} onChange={e=>setCompanyId(e.target.value)}><option value="">Select company</option>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block space-y-1.5 text-sm">Asset tag in target company<Input required value={tag} onChange={e=>setTag(e.target.value)}/></label><label className="block space-y-1.5 text-sm">Transfer reason<Input required value={reason} onChange={e=>setReason(e.target.value)}/></label>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}</div><DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={busy||!companyId}>{busy?'Submitting…':'Submit transfer'}</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function MoveAssetDialog({asset,locations,onClose,onMove}:{asset:Asset|null;locations:Location[];onClose:()=>void;onMove:(siteId:string,reason:string)=>Promise<void>}) {
+  const [siteId,setSiteId]=useState(''); const [reason,setReason]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
+  const destinations=locations.filter(location=>location.id!==asset?.siteId);
+  useEffect(()=>{if(asset){setSiteId(destinations[0]?.id||'');setReason('');setError('');setBusy(false);}},[asset?.id]);
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{await onMove(siteId,reason.trim());onClose();}catch(err){setError(err instanceof Error?err.message:String(err));setBusy(false);}};
+  return <Dialog open={!!asset} onOpenChange={open=>!open&&onClose()}><DialogContent><form onSubmit={submit}><DialogHeader><DialogTitle>Move asset to another site</DialogTitle><DialogDescription>This keeps the asset in the same company. Site IT Admins submit the move for Super Admin approval.</DialogDescription></DialogHeader><div className="space-y-4 py-5"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><span className="font-medium">{asset?.name}</span><span className="ml-2 font-mono text-xs text-muted-foreground">{asset?.assetTag}</span></div><label className="block space-y-1.5 text-sm">Target site<select required className="h-10 w-full rounded-md border bg-background px-3" value={siteId} onChange={e=>setSiteId(e.target.value)}><option value="">Select site</option>{destinations.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label className="block space-y-1.5 text-sm">Move reason<Input required value={reason} onChange={e=>setReason(e.target.value)}/></label>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}</div><DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={busy||!siteId}>{busy?'Submitting…':'Move asset'}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 type DetailedProfileDraft = {
@@ -774,13 +927,18 @@ const emptyDetailedProfile = (): DetailedProfileDraft => ({
   lastCheckIn: '',
 });
 
-function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: { 
+function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules, defaultSiteId, canChooseLocation, onSubmit, onCancel }: {
   asset: Asset | null;
   usersList: User[];
-  locationsList: Location[];
-  onSubmit: (data: Omit<Asset, 'id'>, profile: DetailedProfileDraft) => void;
+  sitesList: Location[];
+  assetCategories: AssetCategory[];
+  assetTagRules: AssetTagSiteSeries[];
+  defaultSiteId: string;
+  canChooseLocation: boolean;
+  onSubmit: (data: Omit<Asset, 'id'>, profile: DetailedProfileDraft) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const [conditionOptions]=useCollection<MasterDataOption>('asset-conditions');
   const [detailedProfileEnabled, setDetailedProfileEnabled] = useState(true);
   const [profile, setProfile] = useState<DetailedProfileDraft>(() => {
     if (!asset) return emptyDetailedProfile();
@@ -827,18 +985,46 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
     amcExpiry: asset?.amcExpiry || '',
     insuranceProvider: asset?.insuranceProvider || '',
     insuranceExpiry: asset?.insuranceExpiry || '',
-    location: asset?.location || '',
+    siteId: asset?.siteId || defaultSiteId,
     assignedTo: asset?.assignedTo || '',
     notes: asset?.notes || ''
   });
+  const [activeSection, setActiveSection] = useState<'general' | 'lifecycle' | 'technical'>('general');
+  const isCreating = !asset;
+  const selectedLocationName = sitesList.find(location => location.id === formData.siteId)?.name || 'Your assigned site';
+  const tagRule=assetTagRules.find(rule=>rule.active&&rule.siteId===formData.siteId);
+  useEffect(()=>{if(!isCreating||!tagRule)return;const typeCode=assetCategories.find(item=>item.id===formData.type)?.code||assetCategories.find(item=>item.id===formData.type)?.name||'';setFormData(current=>({...current,assetTag:[tagRule.companyPrefix,tagRule.functionPrefix,typeCode,`${tagRule.series}${String(tagRule.nextNumber).padStart(tagRule.digits,'0')}`].filter(Boolean).join('-')}));},[formData.siteId,formData.type,tagRule?.id]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData, { ...profile, enabled: detailedProfileEnabled });
+    void onSubmit(formData, { ...profile, enabled: detailedProfileEnabled });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-0">
+      {!isCreating && <div className="border-b bg-muted/20 px-5 py-3 sm:px-7" role="tablist" aria-label="Asset form sections">
+      <div className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
+        {([
+          ['general', 'Core details'],
+          ['lifecycle', 'Coverage'],
+          ['technical', 'Technical profile'],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === value}
+            onClick={() => setActiveSection(value)}
+            className={`rounded px-2 py-2 text-xs font-medium transition-colors sm:text-sm ${activeSection === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      </div>
+      }
+
+      {!isCreating && activeSection === 'technical' && <div className="space-y-5 px-5 py-6 sm:px-7">
       <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
         <div>
           <p className="text-sm font-medium">Detailed Profile</p>
@@ -926,8 +1112,13 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
           </div>
         </div>
       )}
+      </div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {activeSection === 'general' && <div className="grid grid-cols-1 gap-x-5 gap-y-4 px-5 py-6 sm:grid-cols-2 sm:px-7 xl:grid-cols-3">
+        <div className="sm:col-span-2 xl:col-span-3">
+          <p className="text-sm font-semibold">Asset identity</p>
+          <p className="mt-1 text-xs text-muted-foreground">Use the name, tag and serial number that identify this item in your inventory.</p>
+        </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Asset Name</label>
           <Input
@@ -943,7 +1134,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
             value={formData.assetTag}
             onChange={(e) => setFormData({ ...formData, assetTag: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[11px] leading-4 text-muted-foreground">
             Must be unique. AssetFlow will check for duplicates before saving.
           </p>
         </div>
@@ -954,17 +1145,11 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
             onChange={(e) => setFormData({ ...formData, type: e.target.value as AssetType })}
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
-            <option value="laptop">Laptop</option>
-            <option value="desktop">Desktop</option>
-            <option value="monitor">Monitor</option>
-            <option value="phone">Phone</option>
-            <option value="tablet">Tablet</option>
-            <option value="printer">Printer</option>
-            <option value="server">Server</option>
-            <option value="accessory">Accessory</option>
+            {!assetCategories.some(category=>category.id===formData.type)&&<option value={formData.type}>{formData.type}</option>}
+            {assetCategories.filter(category=>(category.active&&category.name.trim())||category.id===formData.type).map(category=><option key={category.id} value={category.id}>{category.name||'Unnamed category'}</option>)}
           </select>
         </div>
-        <div className="space-y-2">
+        {!isCreating && <div className="space-y-2">
           <label className="text-sm font-medium">Status</label>
           <select
             value={formData.status}
@@ -985,7 +1170,7 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
             <option value="disposed">Disposed</option>
             <option value="lost">Lost</option>
           </select>
-        </div>
+        </div>}
         <div className="space-y-2">
           <label className="text-sm font-medium">Manufacturer</label>
           <Input
@@ -1009,24 +1194,28 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
             value={formData.serialNumber}
             onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[11px] leading-4 text-muted-foreground">
             Must be unique. Duplicate serial numbers cannot be saved.
           </p>
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Location</label>
-          <select
-            value={formData.location}
-            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
-          >
-            <option value="">Select location</option>
-            {locationsList.map(loc => (
-              <option key={loc.id} value={loc.id}>{loc.name}</option>
-            ))}
-          </select>
+        <div className="mt-2 border-t pt-5 sm:col-span-2 xl:col-span-3">
+          <p className="text-sm font-semibold">Placement & assignment</p>
+          <p className="mt-1 text-xs text-muted-foreground">{isCreating ? 'New assets start as Available and Unassigned.' : 'Choose where the asset belongs. Assignment is optional and can be changed later.'}</p>
         </div>
         <div className="space-y-2">
+          <label className="text-sm font-medium">Site</label>
+          {canChooseLocation || !isCreating ? <select
+            value={formData.siteId}
+            onChange={(e) => setFormData({ ...formData, siteId: e.target.value })}
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
+          >
+            <option value="">Select site</option>
+            {sitesList.map(loc => (
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
+            ))}
+          </select> : <Input value={selectedLocationName} disabled aria-label="Assigned site" />}
+        </div>
+        {!isCreating && <div className="space-y-2">
           <label className="text-sm font-medium">Assign To</label>
           <select
             value={formData.assignedTo || ''}
@@ -1047,9 +1236,13 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
               </option>
             ))}
           </select>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[11px] leading-4 text-muted-foreground">
             Selecting a user marks this asset as assigned.
           </p>
+        </div>}
+        {!isCreating && <><div className="mt-2 border-t pt-5 sm:col-span-2 xl:col-span-3">
+          <p className="text-sm font-semibold">Purchase & warranty</p>
+          <p className="mt-1 text-xs text-muted-foreground">Keep the commercial record here; service and insurance coverage stay in the next tab.</p>
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Purchase Date</label>
@@ -1079,53 +1272,41 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
             onChange={(e) => setFormData({ ...formData, warrantyExpiry: e.target.value })}
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Current Condition</label>
-          <select
-            value={formData.condition || 'good'}
-            onChange={(e) => setFormData({ ...formData, condition: e.target.value as Asset['condition'] })}
-            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
-          >
-            <option value="new">New</option>
-            <option value="good">Good</option>
-            <option value="fair">Fair</option>
-            <option value="damaged">Damaged</option>
-          </select>
-        </div>
-        <div className="space-y-2 sm:col-span-2">
-          <label className="text-sm font-medium">Accessories / Handover Items</label>
-          <Input
-            value={formData.accessories || ''}
-            onChange={(e) => setFormData({ ...formData, accessories: e.target.value })}
-            placeholder="Charger, dock, bag, keyboard, adapter..."
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">AMC Provider</label>
-          <Input value={formData.amcProvider || ''} onChange={(e) => setFormData({ ...formData, amcProvider: e.target.value })} />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">AMC Expiry</label>
-          <Input type="date" value={formData.amcExpiry || ''} onChange={(e) => setFormData({ ...formData, amcExpiry: e.target.value })} />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Insurance Provider</label>
-          <Input value={formData.insuranceProvider || ''} onChange={(e) => setFormData({ ...formData, insuranceProvider: e.target.value })} />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Insurance Expiry</label>
-          <Input type="date" value={formData.insuranceExpiry || ''} onChange={(e) => setFormData({ ...formData, insuranceExpiry: e.target.value })} />
-        </div>
-        <div className="space-y-2 sm:col-span-2">
+        <div className="mt-2 space-y-2 border-t pt-5 sm:col-span-2 xl:col-span-3">
           <label className="text-sm font-medium">Notes</label>
           <textarea
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm min-h-[80px]"
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           />
+        </div></>}
+      </div>}
+
+      {!isCreating && activeSection === 'lifecycle' && (
+        <div className="space-y-5 px-5 py-6 sm:px-7">
+          <div>
+            <p className="text-sm font-semibold">Coverage & condition</p>
+            <p className="text-xs text-muted-foreground">Optional details for handover items, AMC and insurance. Purchase warranty is recorded under Core details.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Current Condition</label>
+              <select value={formData.condition || 'good'} onChange={(e) => setFormData({ ...formData, condition: e.target.value as Asset['condition'] })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                {conditionOptions.filter(option=>option.active&&option.id!=='missing').map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-sm font-medium">Accessories / Handover Items</label>
+              <Input value={formData.accessories || ''} onChange={(e) => setFormData({ ...formData, accessories: e.target.value })} placeholder="Charger, dock, bag, keyboard, adapter..." />
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium">AMC Provider</label><Input value={formData.amcProvider || ''} onChange={(e) => setFormData({ ...formData, amcProvider: e.target.value })} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">AMC Expiry</label><Input type="date" value={formData.amcExpiry || ''} onChange={(e) => setFormData({ ...formData, amcExpiry: e.target.value })} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">Insurance Provider</label><Input value={formData.insuranceProvider || ''} onChange={(e) => setFormData({ ...formData, insuranceProvider: e.target.value })} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">Insurance Expiry</label><Input type="date" value={formData.insuranceExpiry || ''} onChange={(e) => setFormData({ ...formData, insuranceExpiry: e.target.value })} /></div>
+          </div>
         </div>
-      </div>
-      <DialogFooter>
+      )}
+      <DialogFooter className="sticky bottom-0 z-10 border-t bg-background/95 px-5 py-4 backdrop-blur sm:px-7">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="submit">{asset ? 'Update' : 'Create'} Asset</Button>
       </DialogFooter>
@@ -1133,8 +1314,8 @@ function AssetForm({ asset, usersList, locationsList, onSubmit, onCancel }: {
   );
 }
 
-function AssetDetail({ asset, usersList, locationsList }: { asset: Asset; usersList: User[]; locationsList: Location[] }) {
-  const location = locationsList.find(l => l.id === asset.location);
+function AssetDetail({ asset, usersList, sitesList }: { asset: Asset; usersList: User[]; sitesList: Location[] }) {
+  const location = sitesList.find(l => l.id === asset.siteId);
   const assignedUser = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo) : null;
 
   return (
@@ -1169,7 +1350,7 @@ function AssetDetail({ asset, usersList, locationsList }: { asset: Asset; usersL
           <p className="text-sm font-mono text-foreground">{asset.serialNumber}</p>
         </div>
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Location</p>
+          <p className="text-sm font-medium text-muted-foreground">Site</p>
           <p className="text-sm text-foreground">{location?.name || '-'}</p>
         </div>
         <div>
@@ -1203,7 +1384,7 @@ function AssetDetail({ asset, usersList, locationsList }: { asset: Asset; usersL
         <div>
           <p className="text-sm font-medium text-muted-foreground">Custody</p>
           <p className="text-sm text-foreground">
-            {assignedUser?.name || 'IT Asset Manager'}
+            {assignedUser?.name || custodianName()}
           </p>
         </div>
         <div>

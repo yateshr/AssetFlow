@@ -5,6 +5,7 @@
  */
 import type { User } from '@/data/models';
 import { eraseAll, getCollection, kv, pendingWrites, replaceCollection } from './db';
+import { DEFAULT_ASSET_CATEGORIES } from '@/data/assetCategories';
 
 export async function loadDemoData() {
   const demo = await import('@/data/demoData');
@@ -19,6 +20,7 @@ export async function loadDemoData() {
   await replaceCollection('users', [...existing, ...demoUsers]);
   await replaceCollection('locations', demo.locations);
   await replaceCollection('departments', demo.departments.map(name => ({ id: name, name })));
+  await replaceCollection('asset-categories', DEFAULT_ASSET_CATEGORIES);
   await replaceCollection('assets', demo.assets);
   await replaceCollection('assignments', demo.assignments);
   await replaceCollection('vendors', demo.vendors);

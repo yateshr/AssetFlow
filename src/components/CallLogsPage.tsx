@@ -19,6 +19,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   formatDate,
   formatTitle,
+  type Asset,
+  type Location,
   type User,
   type ItCallCategory,
   type ItCallLog,
@@ -26,19 +28,27 @@ import {
   type ItCallStatus
 } from '@/data/models';
 import { exportExcelReport } from '@/lib/reportExport';
+import { useCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 
 const statuses: Array<ItCallStatus | 'all'> = ['all', 'open', 'in-progress', 'resolved', 'closed'];
-const priorities: Array<ItCallPriority | 'all'> = ['all', 'low', 'medium', 'high', 'critical'];
-const categories: Array<ItCallCategory | 'all'> = ['all', 'hardware', 'software', 'network', 'access', 'asset-request', 'other'];
 
 interface CallLogsPageProps {
   usersList: User[];
   departmentsList: string[];
+  assetsList: Asset[];
   callLogs: ItCallLog[];
   onCallLogsChange: (callLogs: ItCallLog[]) => void;
+  currentUser: User;
 }
 
-export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsChange }: CallLogsPageProps) {
+export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs, onCallLogsChange, currentUser }: CallLogsPageProps) {
+  const [sitesList]=useCollection<Location>('locations');
+  const [priorityRecords]=useCollection<MasterDataOption>('call-priorities');
+  const [supportTeams]=useCollection<MasterDataOption>('support-teams');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
+  const priorities: Array<ItCallPriority|'all'>=['all',...priorityRecords.filter(option=>option.active).map(option=>option.id)];
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState<ItCallStatus | 'all'>('all');
@@ -55,6 +65,8 @@ export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsC
         || call.callerName.toLowerCase().includes(search)
         || call.department.toLowerCase().includes(search)
         || call.issue.toLowerCase().includes(search)
+        || call.employeeNumber?.toLowerCase().includes(search)
+        || call.troubleshooting?.toLowerCase().includes(search)
         || call.assetTag?.toLowerCase().includes(search);
 
       const matchesDate = dateFilter === '' || call.date === dateFilter;
@@ -95,21 +107,23 @@ export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsC
         },
         {
           title: 'Call Log Entries',
-          headers: ['ID', 'Date', 'Time', 'Caller', 'Department', 'Contact', 'Category', 'Priority', 'Asset Tag', 'Assigned To', 'Status', 'Issue', 'Resolution'],
+          headers: ['Call ID', 'Date', 'Time', 'Employee No.', 'Asset ID', 'Department', 'User Name', 'Problem Description', 'Troubleshooting Step', 'Resolution', 'Status', 'Resolution Date', 'Assigned To', 'Priority', 'Category'],
           rows: filteredCallLogs.map(call => [
             call.id,
             call.date,
             call.time,
-            call.callerName,
-            call.department,
-            call.contactNumber,
-            formatTitle(call.category),
-            formatTitle(call.priority),
+            call.employeeNumber || '',
             call.assetTag || '',
-            call.assignedTo,
-            formatTitle(call.status),
+            call.department,
+            call.callerName,
             call.issue,
-            call.resolution || ''
+            call.troubleshooting || '',
+            call.resolution || '',
+            formatTitle(call.status),
+            call.resolutionDate || call.closedAt || '',
+            call.assignedTo,
+            formatTitle(call.priority),
+            formatTitle(call.category)
           ])
         }
       ]
@@ -189,7 +203,8 @@ export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsC
               <TableRow>
                 <TableHead>Call</TableHead>
                 <TableHead>Caller</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead>Asset ID</TableHead>
+                <TableHead>Problem</TableHead>
                 <TableHead>Priority</TableHead>
                 <TableHead>Assigned To</TableHead>
                 <TableHead>Status</TableHead>
@@ -199,7 +214,7 @@ export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsC
             <TableBody>
               {filteredCallLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     No call log entries found
                   </TableCell>
                 </TableRow>
@@ -218,7 +233,8 @@ export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsC
                         <p className="text-xs text-muted-foreground">{call.department}</p>
                       </div>
                     </TableCell>
-                    <TableCell>{formatTitle(call.category)}</TableCell>
+                    <TableCell className="font-mono text-xs">{call.assetTag || '—'}</TableCell>
+                    <TableCell className="max-w-[260px]"><p className="truncate text-sm" title={call.issue}>{call.issue}</p><p className="text-xs text-muted-foreground">{formatTitle(call.category)}</p></TableCell>
                     <TableCell>
                       <Badge variant="outline" className={getPriorityClass(call.priority)}>
                         {formatTitle(call.priority)}
@@ -266,6 +282,9 @@ export function CallLogsPage({ usersList, departmentsList, callLogs, onCallLogsC
             callLog={editingCall}
             usersList={usersList}
             departmentsList={departmentsList}
+            assetsList={assetsList}
+            sitesList={sitesList}
+            currentUser={currentUser}
             onCancel={() => {
               setShowCreateModal(false);
               setEditingCall(null);
@@ -330,38 +349,61 @@ function CallLogForm({
   callLog,
   usersList,
   departmentsList,
+  assetsList,
+  sitesList,
+    currentUser,
   onSubmit,
   onCancel
 }: {
   callLog: ItCallLog | null;
   usersList: User[];
   departmentsList: string[];
+  assetsList: Asset[];
+  sitesList: Location[];
+  currentUser: User;
   onSubmit: (data: Omit<ItCallLog, 'id'>) => void;
   onCancel: () => void;
 }) {
+  const [supportTeams]=useCollection<MasterDataOption>('support-teams');
+  const [categoryRecords]=useCollection<MasterDataOption>('call-categories');
+  const [priorityRecords]=useCollection<MasterDataOption>('call-priorities');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
+  const categories=categoryRecords.filter(option=>option.active&&option.name.trim());
+  const priorities=priorityRecords.filter(option=>option.active&&option.name.trim());
   const [formData, setFormData] = useState<Omit<ItCallLog, 'id'>>({
+    siteId: callLog?.siteId || currentUser.siteId || '',
     date: callLog?.date || new Date().toISOString().split('T')[0],
     time: callLog?.time || new Date().toTimeString().slice(0, 5),
+    employeeNumber: callLog?.employeeNumber || '',
     callerName: callLog?.callerName || '',
     department: callLog?.department || '',
     contactNumber: callLog?.contactNumber || '',
-    category: callLog?.category || 'hardware',
-    priority: callLog?.priority || 'medium',
+    category: callLog?.category || categories[0]?.id || '',
+    priority: callLog?.priority || priorities[0]?.id || '',
     issue: callLog?.issue || '',
+    troubleshooting: callLog?.troubleshooting || '',
     assetTag: callLog?.assetTag || '',
-    assignedTo: callLog?.assignedTo || '',
+    assignedTo: callLog?.assignedTo || policy.defaultSupportTeam,
     status: callLog?.status || 'open',
     resolution: callLog?.resolution || '',
+    resolutionDate: callLog?.resolutionDate || '',
     closedAt: callLog?.closedAt || ''
   });
   const selectedUserId = usersList.find(user => user.name === formData.callerName)?.id || '';
+  const selectedUser = usersList.find(user => user.id === selectedUserId);
+  const selectedAsset = assetsList.find(asset => asset.assetTag === formData.assetTag);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     onSubmit({
       ...formData,
+      siteId: formData.siteId || selectedAsset?.siteId || selectedUser?.siteId || currentUser.siteId,
       assetTag: formData.assetTag || undefined,
+      employeeNumber: formData.employeeNumber || undefined,
+      troubleshooting: formData.troubleshooting || undefined,
       resolution: formData.resolution || undefined,
+      resolutionDate: formData.resolutionDate || undefined,
       closedAt: formData.closedAt || undefined
     });
   };
@@ -384,7 +426,8 @@ function CallLogForm({
                 ...formData,
                 callerName: selectedUser?.name || '',
                 department: selectedUser?.department || '',
-                contactNumber: selectedUser?.phone || ''
+                contactNumber: selectedUser?.phone || '',
+                siteId: selectedUser?.siteId || formData.siteId
               });
             }}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -397,6 +440,9 @@ function CallLogForm({
               </option>
             ))}
           </select>
+        </Field>
+        <Field label="Employee No.">
+          <Input value={formData.employeeNumber || ''} onChange={(event) => setFormData({ ...formData, employeeNumber: event.target.value })} placeholder="Employee number" />
         </Field>
         <Field label="Department">
           <select
@@ -414,25 +460,34 @@ function CallLogForm({
         <Field label="Contact Number">
           <Input required value={formData.contactNumber} onChange={(event) => setFormData({ ...formData, contactNumber: event.target.value })} />
         </Field>
-        <Field label="Asset Tag">
-          <Input value={formData.assetTag} onChange={(event) => setFormData({ ...formData, assetTag: event.target.value })} />
+        <Field label="Asset ID">
+          <select value={formData.assetTag || ''} onChange={(event) => { const asset=assetsList.find(item=>item.assetTag===event.target.value); setFormData({ ...formData, assetTag: event.target.value, siteId: asset?.siteId || formData.siteId }); }} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="">No linked asset</option>
+            {assetsList.map(asset => <option key={asset.id} value={asset.assetTag}>{asset.assetTag} — {asset.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Call Site">
+          <select required value={formData.siteId || ''} onChange={(event) => setFormData({ ...formData, siteId: event.target.value })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="">Select site</option>
+            {sitesList.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+          </select>
         </Field>
         <Field label="Category">
           <select value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value as ItCallCategory })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-            {categories.filter(category => category !== 'all').map(category => (
-              <option key={category} value={category}>{formatTitle(category)}</option>
+            {categories.map(category => (
+              <option key={category.id} value={category.id}>{category.name}</option>
             ))}
           </select>
         </Field>
         <Field label="Priority">
           <select value={formData.priority} onChange={(event) => setFormData({ ...formData, priority: event.target.value as ItCallPriority })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-            {priorities.filter(priority => priority !== 'all').map(priority => (
-              <option key={priority} value={priority}>{formatTitle(priority)}</option>
+            {priorities.map(priority => (
+              <option key={priority.id} value={priority.id}>{priority.name}</option>
             ))}
           </select>
         </Field>
         <Field label="Assigned To">
-          <Input required value={formData.assignedTo} onChange={(event) => setFormData({ ...formData, assignedTo: event.target.value })} />
+          <select required value={formData.assignedTo} onChange={(event) => setFormData({ ...formData, assignedTo: event.target.value })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{supportTeams.filter(option=>option.active&&option.name.trim()).map(option=><option key={option.id} value={option.name}>{option.name}</option>)}</select>
         </Field>
         <Field label="Status">
           <select value={formData.status} onChange={(event) => setFormData({ ...formData, status: event.target.value as ItCallStatus })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
@@ -444,8 +499,14 @@ function CallLogForm({
         <Field label="Issue" className="sm:col-span-2">
           <textarea required value={formData.issue} onChange={(event) => setFormData({ ...formData, issue: event.target.value })} className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
         </Field>
+        <Field label="Troubleshooting Step" className="sm:col-span-2">
+          <textarea value={formData.troubleshooting || ''} onChange={(event) => setFormData({ ...formData, troubleshooting: event.target.value })} className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Steps attempted before the final resolution" />
+        </Field>
         <Field label="Resolution" className="sm:col-span-2">
           <textarea value={formData.resolution} onChange={(event) => setFormData({ ...formData, resolution: event.target.value })} className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+        </Field>
+        <Field label="Resolution Date">
+          <Input type="date" value={formData.resolutionDate || ''} onChange={(event) => setFormData({ ...formData, resolutionDate: event.target.value })} />
         </Field>
       </div>
       <DialogFooter>
@@ -470,6 +531,7 @@ function CallLogDetail({ callLog }: { callLog: ItCallLog }) {
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Detail label="Date" value={`${formatDate(callLog.date)} at ${callLog.time}`} />
       <Detail label="Caller" value={callLog.callerName} />
+      <Detail label="Employee No." value={callLog.employeeNumber || '-'} />
       <Detail label="Department" value={callLog.department} />
       <Detail label="Contact" value={callLog.contactNumber} />
       <Detail label="Category" value={formatTitle(callLog.category)} />
@@ -479,7 +541,9 @@ function CallLogDetail({ callLog }: { callLog: ItCallLog }) {
       <Detail label="Status" value={formatTitle(callLog.status)} />
       <Detail label="Closed At" value={callLog.closedAt || '-'} />
       <Detail label="Issue" value={callLog.issue} className="sm:col-span-2" />
+      <Detail label="Troubleshooting Step" value={callLog.troubleshooting || '-'} className="sm:col-span-2" />
       <Detail label="Resolution" value={callLog.resolution || '-'} className="sm:col-span-2" />
+      <Detail label="Resolution Date" value={callLog.resolutionDate ? formatDate(callLog.resolutionDate) : '-'} />
     </div>
   );
 }

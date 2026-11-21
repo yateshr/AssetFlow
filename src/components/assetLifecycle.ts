@@ -6,8 +6,10 @@ import type {
   Assignment,
   AssetStatus,
 } from '@/data/models';
+import { getCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
-export const IT_ASSET_MANAGER = 'IT Asset Manager';
+export const custodianName = () => (getCollection<SystemPolicy>('system-policies')[0]||DEFAULT_SYSTEM_POLICY).defaultCustodian;
 
 export function assetStatusLabel(status: AssetStatus): string {
   switch (status) {
@@ -21,7 +23,7 @@ export function assetStatusLabel(status: AssetStatus): string {
 export function holderName(asset: Asset, users: User[]): string {
   return asset.assignedTo
     ? users.find((user) => user.id === asset.assignedTo)?.name ?? 'Unknown User'
-    : IT_ASSET_MANAGER;
+    : custodianName();
 }
 
 export function makeHistoryEvent(
@@ -69,10 +71,10 @@ export function returnAssetsForDepartedUser(
     makeHistoryEvent(assetId, 'Returned', {
       performedBy: actorName,
       from: user,
-      to: IT_ASSET_MANAGER,
+      to: custodianName(),
       userId,
       reason: 'Employee left company',
-      notes: 'Automatically returned to IT Asset Manager after employee departure.',
+      notes: `Automatically returned to ${custodianName()} after employee departure.`,
     })
   );
 

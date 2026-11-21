@@ -3,8 +3,10 @@ import { Activity, AlertTriangle, Boxes, CheckCircle2, CircleDollarSign, Laptop,
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { Asset, User } from '@/data/models';
+import { formatCurrency, type Asset, type User } from '@/data/models';
 import type { Page } from './App';
+import { useCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
 interface ManagementDashboardProps {
   assets: Asset[];
@@ -13,10 +15,12 @@ interface ManagementDashboardProps {
 }
 
 export function ManagementDashboard({ assets, users, onNavigate }: ManagementDashboardProps) {
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const now = Date.now();
   const warranty90 = assets.filter(a => {
     const t = new Date(a.warrantyExpiry).getTime();
-    return Number.isFinite(t) && t >= now && t <= now + 90 * 86400000;
+    return Number.isFinite(t) && t >= now && t <= now + policy.warrantyAlertDays * 86400000;
   }).length;
   const expired = assets.filter(a => {
     const t = new Date(a.warrantyExpiry).getTime();
@@ -36,9 +40,9 @@ export function ManagementDashboard({ assets, users, onNavigate }: ManagementDas
     ['IT Stock', assets.filter(a => a.status === 'available' && !a.assignedTo).length, Boxes],
     ['Under Repair', assets.filter(a => a.status === 'maintenance').length, Wrench],
     ['Lost', assets.filter(a => a.status === 'lost').length, AlertTriangle],
-    ['Asset Value', `₹${value.toLocaleString('en-IN')}`, CircleDollarSign],
+    ['Asset Value', formatCurrency(value), CircleDollarSign],
     ['Employees', users.filter(u => u.status === 'active').length, Users],
-    ['Warranty ≤90d', warranty90, ShieldAlert],
+    [`Warranty ≤${policy.warrantyAlertDays}d`, warranty90, ShieldAlert],
   ] as const;
 
   return <div className="af-stagger space-y-6">
@@ -68,7 +72,7 @@ export function ManagementDashboard({ assets, users, onNavigate }: ManagementDas
     </div>
 
     <Card><CardHeader><CardTitle>Warranty & Lifecycle Alerts</CardTitle></CardHeader><CardContent className="grid md:grid-cols-3 gap-3">
-      <AlertCard icon={ShieldAlert} label="Warranty expires within 90 days" value={warranty90} onClick={() => onNavigate('assets')} />
+      <AlertCard icon={ShieldAlert} label={`Warranty expires within ${policy.warrantyAlertDays} days`} value={warranty90} onClick={() => onNavigate('assets')} />
       <AlertCard icon={AlertTriangle} label="Expired warranties" value={expired} onClick={() => onNavigate('assets')} />
       <AlertCard icon={Wrench} label="Assets under repair" value={assets.filter(a => a.status === 'maintenance').length} onClick={() => onNavigate('operations')} />
     </CardContent></Card>

@@ -15,6 +15,9 @@ import {
   type Location,
   formatDate 
 } from '@/data/models';
+import { useCollection } from '@/lib/db';
+import type { MasterDataOption } from '@/data/masterData';
+import { custodianName } from './assetLifecycle';
 
 interface AssignmentsPageProps {
   assignmentsList: Assignment[];
@@ -114,7 +117,7 @@ export function AssignmentsPage({
         action: condition === 'damaged' ? 'Under Repair' : condition === 'missing' ? 'Lost' : 'Returned',
         performedBy: currentUser.id,
         from: assignment.userName,
-        to: 'IT Asset Manager',
+        to: custodianName(),
         userId: assignment.userId,
         reason: 'Asset checked in',
         notes: [
@@ -312,7 +315,7 @@ export function AssignmentsPage({
                   timestamp: new Date().toISOString(),
                   action: 'Assigned',
                   performedBy: currentUser.id,
-                  from: 'IT Asset Manager',
+                  from: custodianName(),
                   to: data.userName,
                   userId: data.userId,
                   reason: 'Asset checked out',
@@ -358,6 +361,7 @@ function ReturnForm({
   onSubmit: (condition: 'good' | 'fair' | 'damaged' | 'missing', notes: string) => void;
   onCancel: () => void;
 }) {
+  const [conditionOptions]=useCollection<MasterDataOption>('asset-conditions');
   const [condition, setCondition] = useState<'good' | 'fair' | 'damaged' | 'missing'>('good');
   const [notes, setNotes] = useState('');
 
@@ -381,10 +385,7 @@ function ReturnForm({
           onChange={(e) => setCondition(e.target.value as 'good' | 'fair' | 'damaged' | 'missing')}
           className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
         >
-          <option value="good">Good — return to available inventory</option>
-          <option value="fair">Fair — return to available inventory</option>
-          <option value="damaged">Damaged — send to Under Repair</option>
-          <option value="missing">Missing — mark asset as Lost</option>
+          {conditionOptions.filter(option=>option.active&&option.id!=='new').map(option=><option key={option.id} value={option.id}>{option.name}{option.id==='damaged'?' — send to Under Repair':option.id==='missing'?' — mark asset as Lost':' — return to available inventory'}</option>)}
         </select>
       </div>
 
@@ -417,6 +418,7 @@ function AssignForm({
   onSubmit: (data: Omit<Assignment, 'id' | 'status'>) => void;
   onCancel: () => void;
 }) {
+  const [conditionOptions]=useCollection<MasterDataOption>('asset-conditions');
   const [selectedAsset, setSelectedAsset] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [condition, setCondition] = useState<'new' | 'good' | 'fair'>('good');
@@ -486,9 +488,7 @@ function AssignForm({
             onChange={(e) => setCondition(e.target.value as 'new' | 'good' | 'fair')}
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
-            <option value="new">New</option>
-            <option value="good">Good</option>
-            <option value="fair">Fair</option>
+            {conditionOptions.filter(option=>option.active&&['new','good','fair'].includes(option.id)).map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
           </select>
         </div>
         <div className="space-y-2">

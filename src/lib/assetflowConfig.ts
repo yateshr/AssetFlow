@@ -194,14 +194,14 @@ export function generateAssetTag(args: {
     generated: true,
     assetTag,
     sequence,
-    locationId: args.location.id,
+    siteId: args.location.id,
     ruleId: rule.id,
   };
 }
 
 export function advanceLocationSequence(
   config: AssetFlowConfig,
-  locationId: string,
+  siteId: string,
   usedSequence: number,
 ) {
   return {
@@ -210,7 +210,7 @@ export function advanceLocationSequence(
       ...config.numbering,
       nextNumberByLocation: {
         ...config.numbering.nextNumberByLocation,
-        [locationId]: usedSequence + 1,
+        [siteId]: usedSequence + 1,
       },
     },
   };

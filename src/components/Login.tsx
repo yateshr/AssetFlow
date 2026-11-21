@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Package, Eye, EyeOff, ShieldCheck, BarChart3, Wrench, Loader2, MailCheck } from 'lucide-react';
+import { Package, Eye, EyeOff, ShieldCheck, BarChart3, Wrench, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ActivityIndicator } from '@/components/ui/loading';
 import { Input } from '@/components/ui/input';
 import { needsSetup, resetPassword, signIn, signUp, signupAllowed } from '@/lib/auth';
 
@@ -83,30 +84,28 @@ export function Login() {
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr] bg-background">
       {/* Brand panel */}
-      <aside className="relative hidden lg:flex flex-col justify-between overflow-hidden p-12 text-white bg-gradient-to-br from-[oklch(0.35_0.17_272)] via-[oklch(0.42_0.2_285)] to-[oklch(0.5_0.22_320)]">
-        <div className="pointer-events-none absolute -top-24 -left-24 h-96 w-96 rounded-full bg-white/15 blur-3xl" style={{ animation: 'af-float 14s ease-in-out infinite' }} />
-        <div className="pointer-events-none absolute bottom-0 right-0 h-[28rem] w-[28rem] rounded-full bg-[oklch(0.7_0.2_330)]/30 blur-3xl" style={{ animation: 'af-float 18s ease-in-out infinite reverse' }} />
+      <aside className="relative hidden lg:flex flex-col justify-between overflow-hidden border-r border-white/10 bg-[oklch(0.19_0.03_255)] p-12 text-white">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.07]"
           style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '44px 44px' }}
         />
 
         <div className="relative flex items-center gap-3 af-fade-in">
-          <div className="h-11 w-11 rounded-xl bg-white/15 backdrop-blur ring-1 ring-white/25 flex items-center justify-center">
-            <Package className="h-6 w-6" />
+          <div className="h-10 w-10 rounded-md bg-white/10 ring-1 ring-white/15 flex items-center justify-center">
+            <Package className="h-5 w-5 text-[oklch(0.75_0.14_248)]" />
           </div>
           <span className="text-2xl font-semibold tracking-tight">AssetFlow</span>
         </div>
 
         <div className="relative max-w-lg">
-          <h2 className="af-page text-4xl xl:text-5xl font-bold leading-tight tracking-tight">
-            Know what you own.<br />Run IT with confidence.
+          <h2 className="text-4xl font-semibold leading-tight tracking-[-0.035em] xl:text-[44px]">
+            One reliable system<br />for your IT operations.
           </h2>
           <ul className="af-stagger mt-10 space-y-5">
             {highlights.map(({ icon: Icon, title, text }) => (
-              <li key={title} className="flex gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur-md transition-all duration-300 hover:bg-white/15 hover:translate-x-1">
-                <div className="h-10 w-10 shrink-0 rounded-xl bg-white/15 flex items-center justify-center">
-                  <Icon className="h-5 w-5" />
+              <li key={title} className="flex gap-4 border-t border-white/10 py-4 first:border-t-0">
+                <div className="h-9 w-9 shrink-0 rounded-md bg-white/[0.07] flex items-center justify-center">
+                  <Icon className="h-[18px] w-[18px] text-[oklch(0.75_0.14_248)]" />
                 </div>
                 <div>
                   <p className="font-semibold">{title}</p>
@@ -126,14 +125,14 @@ export function Login() {
       <main className="af-ambient flex items-center justify-center p-6 sm:p-10">
         <div className="af-page w-full max-w-sm">
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-chart-4 flex items-center justify-center shadow-lg shadow-primary/30">
+            <div className="h-9 w-9 rounded-md bg-primary flex items-center justify-center">
               <Package className="h-5 w-5 text-white" />
             </div>
             <span className="text-2xl font-bold tracking-tight">AssetFlow</span>
           </div>
 
           {mode === 'checking' ? (
-            <div className="flex items-center gap-3 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Connecting…</div>
+            <div className="flex items-center gap-3 text-muted-foreground"><ActivityIndicator className="text-primary" label="Connecting" /> Connecting…</div>
           ) : (
             <>
               <h1 className="text-3xl font-bold tracking-tight">{heading}</h1>
@@ -188,7 +187,7 @@ export function Login() {
                 )}
                 <Button type="submit" size="lg" className="w-full h-11" disabled={busy}>
                   {busy
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Please wait…</>
+                    ? <><ActivityIndicator label="Signing in" /> Please wait…</>
                     : mode === 'signin' ? 'Sign in' : mode === 'setup' ? 'Create workspace' : 'Create account'}
                 </Button>
                 {error && (

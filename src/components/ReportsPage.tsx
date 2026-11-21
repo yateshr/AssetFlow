@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -32,6 +32,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { exportExcelReport } from '@/lib/reportExport';
+import { loadConsolidatedSummary, useCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 import {
   formatCurrency,
   formatDate,
@@ -44,6 +46,8 @@ import {
   type ItCallLog,
   type User,
   type Vendor,
+  type AssetCategory,
+  type CompanySummary,
 } from '@/data/models';
 
 type Period = 'month' | 'quarter' | 'year' | 'all' | 'custom';
@@ -54,10 +58,11 @@ interface ReportsPageProps {
   assignmentsList: Assignment[];
   invoicesList: Invoice[];
   vendorsList: Vendor[];
-  locationsList: Location[];
+  sitesList: Location[];
   departmentsList: string[];
   callLogsList: ItCallLog[];
   history: AssetHistoryEvent[];
+  assetCategories: AssetCategory[];
 }
 
 const chartColors = [
@@ -74,17 +79,23 @@ export function ReportsPage({
   assignmentsList,
   invoicesList,
   vendorsList,
-  locationsList,
+  sitesList,
   departmentsList,
   callLogsList,
   history,
+  assetCategories,
 }: ReportsPageProps) {
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [period, setPeriod] = useState<Period>('year');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
   const [assetTypeFilter, setAssetTypeFilter] = useState('all');
+  const [reportView, setReportView] = useState<'portfolio' | 'overview' | 'assets' | 'lifecycle' | 'calls' | 'financial'>('overview');
+  const [portfolio,setPortfolio]=useState<CompanySummary[]>([]);
+  useEffect(()=>{loadConsolidatedSummary().then(setPortfolio).catch(()=>setPortfolio([]));},[]);
 
   const today = new Date();
 
@@ -126,14 +137,14 @@ export function ReportsPage({
 
       const matchesLocation =
         locationFilter === 'all' ||
-        asset.location === locationFilter ||
-        locationsList.find((l) => l.id === asset.location)?.name === locationFilter;
+        asset.siteId === locationFilter ||
+        sitesList.find((l) => l.id === asset.siteId)?.name === locationFilter;
 
       const matchesType = assetTypeFilter === 'all' || asset.type === assetTypeFilter;
 
       return matchesDepartment && matchesLocation && matchesType;
     });
-  }, [assetsList, usersList, locationsList, departmentFilter, locationFilter, assetTypeFilter]);
+  }, [assetsList, usersList, sitesList, departmentFilter, locationFilter, assetTypeFilter]);
 
   const periodAssets = filteredAssets.filter((asset) => inPeriod(asset.purchaseDate));
   const periodInvoices = invoicesList.filter((invoice) => inPeriod(invoice.invoiceDate));
@@ -157,7 +168,7 @@ export function ReportsPage({
   const warrantySoon = filteredAssets.filter((asset) => {
     const expiry = new Date(`${asset.warrantyExpiry}T00:00:00`);
     const days = Math.ceil((expiry.getTime() - today.getTime()) / 86400000);
-    return days >= 0 && days <= 90;
+    return days >= 0 && days <= policy.warrantyAlertDays;
   });
 
   const warrantyExpired = filteredAssets.filter((asset) => {
@@ -173,12 +184,12 @@ export function ReportsPage({
   const callResolutionRate = periodCalls.length ? Math.round((resolvedCalls / periodCalls.length) * 100) : 0;
 
   const statusRows = [
-    { name: 'Assigned', value: assignedCount },
-    { name: 'Available', value: availableCount },
-    { name: 'Maintenance', value: maintenanceCount },
-    { name: 'Retired', value: retiredCount },
-    { name: 'Disposed', value: disposedCount },
-    { name: 'Lost', value: lostCount },
+    { name: 'Assigned', value: assignedCount, color: 'var(--primary)' },
+    { name: 'Available', value: availableCount, color: 'var(--chart-2)' },
+    { name: 'Maintenance', value: maintenanceCount, color: 'var(--chart-5)' },
+    { name: 'Retired', value: retiredCount, color: 'var(--muted-foreground)' },
+    { name: 'Disposed', value: disposedCount, color: 'var(--muted-foreground)' },
+    { name: 'Lost', value: lostCount, color: 'var(--destructive)' },
   ].filter((row) => row.value > 0);
 
   const typeRows = Object.entries(
@@ -201,12 +212,12 @@ export function ReportsPage({
     .filter((row) => row.value > 0)
     .sort((a, b) => b.value - a.value);
 
-  const locationRows = locationsList
+  const locationRows = sitesList
     .map((location) => ({
       name: location.name,
       value: filteredAssets.filter(
         (asset) =>
-          asset.location === location.id || asset.location === location.name
+          asset.siteId === location.id || asset.siteId === location.name
       ).length,
     }))
     .filter((row) => row.value > 0)
@@ -271,8 +282,8 @@ export function ReportsPage({
     value,
   }));
 
-  const amcExpiring = filteredAssets.filter((asset) => asset.amcExpiry && new Date(asset.amcExpiry) >= today && new Date(asset.amcExpiry).getTime() <= today.getTime() + 90 * 86400000);
-  const insuranceExpiring = filteredAssets.filter((asset) => asset.insuranceExpiry && new Date(asset.insuranceExpiry) >= today && new Date(asset.insuranceExpiry).getTime() <= today.getTime() + 90 * 86400000);
+  const amcExpiring = filteredAssets.filter((asset) => asset.amcExpiry && new Date(asset.amcExpiry) >= today && new Date(asset.amcExpiry).getTime() <= today.getTime() + policy.warrantyAlertDays * 86400000);
+  const insuranceExpiring = filteredAssets.filter((asset) => asset.insuranceExpiry && new Date(asset.insuranceExpiry) >= today && new Date(asset.insuranceExpiry).getTime() <= today.getTime() + policy.warrantyAlertDays * 86400000);
 
   const periodLabel =
     period === 'all'
@@ -284,6 +295,17 @@ export function ReportsPage({
           : period === 'quarter'
             ? 'This quarter'
             : 'This year';
+
+  const chartTooltip = {
+    contentStyle: {
+      background: 'var(--popover)',
+      color: 'var(--popover-foreground)',
+      border: '1px solid var(--border)',
+      borderRadius: 8,
+      fontSize: 12,
+    },
+    cursor: { fill: 'color-mix(in oklch, var(--primary) 8%, transparent)' },
+  };
 
   const handleExport = () => {
     exportExcelReport(
@@ -304,7 +326,7 @@ export function ReportsPage({
               ['Active assignments', activeAssignments],
               ['Pending assignments', pendingAssignments],
               ['Active employees', activeUsers],
-              ['Warranty expiring within 90 days', warrantySoon.length],
+              [`Warranty expiring within ${policy.warrantyAlertDays} days`, warrantySoon.length],
               ['Expired warranties', warrantyExpired.length],
               ['Assets under maintenance', maintenanceCount],
               ['Lost assets', lostCount],
@@ -312,8 +334,8 @@ export function ReportsPage({
               ['Open IT calls', openCalls],
               ['Call resolution rate', `${callResolutionRate}%`],
               ['Lifecycle events in period', periodHistory.length],
-              ['AMC expiring within 90 days', amcExpiring.length],
-              ['Insurance expiring within 90 days', insuranceExpiring.length],
+              [`AMC expiring within ${policy.warrantyAlertDays} days`, amcExpiring.length],
+              [`Insurance expiring within ${policy.warrantyAlertDays} days`, insuranceExpiring.length],
             ],
           },
           {
@@ -332,8 +354,8 @@ export function ReportsPage({
             rows: departmentRows.map((row) => [row.name, row.value]),
           },
           {
-            title: 'Assets by Location',
-            headers: ['Location', 'Count'],
+            title: 'Assets by Site',
+            headers: ['Site', 'Count'],
             rows: locationRows.map((row) => [row.name, row.value]),
           },
           {
@@ -365,7 +387,7 @@ export function ReportsPage({
           },
         ],
       },
-      `assetflow-executive-report-${new Date().toISOString().slice(0, 10)}.xls`
+      `assetflow-executive-report-${new Date().toISOString().slice(0, 10)}.xlsx`
     );
   };
 
@@ -443,8 +465,8 @@ export function ReportsPage({
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
             >
-              <option value="all">All locations</option>
-              {locationsList.map((location) => (
+              <option value="all">All sites</option>
+              {sitesList.map((location) => (
                 <option key={location.id} value={location.id}>{location.name}</option>
               ))}
             </select>
@@ -457,8 +479,8 @@ export function ReportsPage({
               onChange={(e) => setAssetTypeFilter(e.target.value)}
             >
               <option value="all">All asset types</option>
-              {['laptop', 'desktop', 'monitor', 'phone', 'tablet', 'printer', 'server', 'accessory'].map((type) => (
-                <option key={type} value={type}>{formatTitle(type)}</option>
+              {assetCategories.filter(category=>category.active&&category.name.trim()).map(category => (
+                <option key={category.id} value={category.id}>{category.name}</option>
               ))}
             </select>
             <Badge variant="outline">{periodLabel}</Badge>
@@ -469,21 +491,38 @@ export function ReportsPage({
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1" role="tablist" aria-label="Report sections">
+        {([
+          ['portfolio', 'All Companies'],
+          ['overview', 'Overview'],
+          ['assets', 'Assets'],
+          ['lifecycle', 'Lifecycle'],
+          ['calls', 'IT Calls'],
+          ['financial', 'Financial'],
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" role="tab" aria-selected={reportView === value} onClick={() => setReportView(value)} className={`shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors ${reportView === value ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <Card className={reportView==='portfolio'?'':'hidden'}><CardHeader><CardTitle>Company portfolio</CardTitle><p className="text-sm text-muted-foreground">Consolidated operational position across every company you can access.</p></CardHeader><CardContent className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="py-3">Company</th><th>Sites</th><th>Users</th><th>Assets</th><th>Assigned</th><th>Maintenance</th><th>Open calls</th><th className="text-right">Asset value</th><th className="text-right">Invoice total</th></tr></thead><tbody>{portfolio.map(row=><tr key={row.companyId} className="border-b last:border-0"><td className="py-4"><p className="font-medium">{row.companyName}</p><p className="text-xs text-muted-foreground">{row.companyCode}</p></td><td>{row.sites}</td><td>{row.users}</td><td>{row.assets}</td><td>{row.assigned}</td><td>{row.maintenance}</td><td>{row.openCalls}</td><td className="text-right">{formatCurrency(row.assetValue)}</td><td className="text-right">{formatCurrency(row.invoiceTotal)}</td></tr>)}{portfolio.length===0&&<tr><td colSpan={9} className="py-10 text-center text-muted-foreground">No accessible company data is available.</td></tr>}</tbody></table></CardContent></Card>
+
+      <div className={`${reportView==='portfolio'?'hidden':'grid'} grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`}>
         <MetricCard label="Total Asset Value" value={formatCurrency(totalValue)} icon={Wallet} />
         <MetricCard label="Assets in Scope" value={filteredAssets.length} icon={Package} />
         <MetricCard label="Period IT Spend" value={formatCurrency(periodSpend)} icon={Receipt} />
         <MetricCard label="Active Assignments" value={activeAssignments} icon={Activity} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`${reportView === 'overview' || reportView === 'assets' ? 'grid' : 'hidden'} grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`}>
         <MetricCard label="Assigned" value={assignedCount} icon={Users} />
         <MetricCard label="Available" value={availableCount} icon={Laptop} />
         <MetricCard label="Under Maintenance" value={maintenanceCount} icon={TrendingUp} />
         <MetricCard label="Active Employees" value={activeUsers} icon={Building2} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`${reportView === 'overview' || reportView === 'calls' || reportView === 'lifecycle' ? 'grid' : 'hidden'} grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`}>
         <MetricCard label="IT Calls" value={periodCalls.length} icon={Activity} />
         <MetricCard label="Open Calls" value={openCalls} icon={AlertTriangle} />
         <MetricCard label="Resolution Rate" value={`${callResolutionRate}%`} icon={TrendingUp} />
@@ -491,17 +530,18 @@ export function ReportsPage({
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className={reportView === 'assets' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle>Asset Status Distribution</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
-              {statusRows.length ? (
+              {reportView === 'assets' && statusRows.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={statusRows}
+                      isAnimationActive={false}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
@@ -510,10 +550,10 @@ export function ReportsPage({
                       label={({ name, value }) => `${name}: ${value}`}
                     >
                       {statusRows.map((_, index) => (
-                        <Cell key={index} fill={chartColors[index % chartColors.length]} />
+                        <Cell key={index} fill={statusRows[index].color} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip {...chartTooltip} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
@@ -523,20 +563,20 @@ export function ReportsPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'assets' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle>Assets by Type</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
-              {typeRows.length ? (
+              {reportView === 'assets' && typeRows.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={typeRows} layout="vertical" margin={{ left: 12, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" allowDecimals={false} />
                     <YAxis type="category" dataKey="name" width={90} />
-                    <Tooltip />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                    <Tooltip {...chartTooltip} />
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false}>
                       {typeRows.map((_, index) => (
                         <Cell key={index} fill={chartColors[index % chartColors.length]} />
                       ))}
@@ -550,20 +590,20 @@ export function ReportsPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'assets' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle>Asset Distribution by Department</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
-              {departmentRows.length ? (
+              {reportView === 'assets' && departmentRows.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={departmentRows} margin={{ left: 8, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" angle={-25} textAnchor="end" height={70} interval={0} />
                     <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    <Tooltip {...chartTooltip} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                       {departmentRows.map((_, index) => (
                         <Cell key={index} fill={chartColors[index % chartColors.length]} />
                       ))}
@@ -577,20 +617,20 @@ export function ReportsPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'financial' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle>IT Spend Trend</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
-              {monthlySpend.length ? (
+              {reportView === 'financial' && monthlySpend.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthlySpend}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis tickFormatter={(value) => formatCurrency(Number(value))} />
-                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                    <Bar dataKey="value" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+                    <Tooltip {...chartTooltip} formatter={(value) => formatCurrency(Number(value))} />
+                    <Bar dataKey="value" fill="var(--chart-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -602,18 +642,18 @@ export function ReportsPage({
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card>
+        <Card className={reportView === 'calls' ? '' : 'hidden'}>
           <CardHeader><CardTitle>IT Calls by Category</CardTitle></CardHeader>
           <CardContent>
             <div className="h-[280px]">
-              {callCategoryRows.length ? (
+              {reportView === 'calls' && callCategoryRows.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={callCategoryRows} layout="vertical" margin={{ left: 20, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" allowDecimals={false} />
                     <YAxis type="category" dataKey="name" width={110} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
+                    <Tooltip {...chartTooltip} />
+                    <Bar dataKey="value" fill="var(--chart-2)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : <EmptyState text="No IT calls in the selected period." />}
@@ -621,18 +661,18 @@ export function ReportsPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'lifecycle' ? '' : 'hidden'}>
           <CardHeader><CardTitle>Asset Lifecycle Activity</CardTitle></CardHeader>
           <CardContent>
             <div className="h-[280px]">
-              {lifecycleRows.length ? (
+              {reportView === 'lifecycle' && lifecycleRows.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={lifecycleRows} layout="vertical" margin={{ left: 20, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" allowDecimals={false} />
                     <YAxis type="category" dataKey="name" width={105} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
+                    <Tooltip {...chartTooltip} />
+                    <Bar dataKey="value" fill="var(--chart-3)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : <EmptyState text="No lifecycle activity in the selected period." />}
@@ -640,18 +680,18 @@ export function ReportsPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'lifecycle' ? '' : 'hidden'}>
           <CardHeader><CardTitle>Warranty Expiry Forecast</CardTitle></CardHeader>
           <CardContent>
             <div className="h-[280px]">
-              {warrantyForecast.length ? (
+              {reportView === 'lifecycle' && warrantyForecast.length ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={warrantyForecast}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="var(--chart-5)" radius={[4, 4, 0, 0]} />
+                    <Tooltip {...chartTooltip} />
+                    <Bar dataKey="value" fill="var(--chart-5)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : <EmptyState text="No warranty expiries in the next 12 months." />}
@@ -661,7 +701,7 @@ export function ReportsPage({
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card>
+        <Card className={reportView === 'lifecycle' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5" />
@@ -669,21 +709,21 @@ export function ReportsPage({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <RiskRow label="Warranty expiring within 90 days" value={warrantySoon.length} />
+            <RiskRow label={`Warranty expiring within ${policy.warrantyAlertDays} days`} value={warrantySoon.length} />
             <RiskRow label="Expired warranties" value={warrantyExpired.length} />
             <RiskRow label="Lost assets" value={lostCount} />
             <RiskRow label="Disposed assets" value={disposedCount} />
             <RiskRow label="Pending assignments" value={pendingAssignments} />
-            <RiskRow label="AMC expiring within 90 days" value={amcExpiring.length} />
-            <RiskRow label="Insurance expiring within 90 days" value={insuranceExpiring.length} />
+            <RiskRow label={`AMC expiring within ${policy.warrantyAlertDays} days`} value={amcExpiring.length} />
+            <RiskRow label={`Insurance expiring within ${policy.warrantyAlertDays} days`} value={insuranceExpiring.length} />
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'assets' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Location Distribution
+              Site Distribution
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -692,11 +732,11 @@ export function ReportsPage({
                 <span className="truncate text-sm">{row.name}</span>
                 <Badge variant="secondary">{row.value}</Badge>
               </div>
-            )) : <EmptyState text="No location data available." />}
+            )) : <EmptyState text="No site data available." />}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={reportView === 'financial' ? '' : 'hidden'}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
@@ -714,7 +754,7 @@ export function ReportsPage({
         </Card>
       </div>
 
-      <Card>
+      <Card className={reportView === 'overview' ? '' : 'hidden'}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
@@ -726,7 +766,7 @@ export function ReportsPage({
             <ReviewCard
               title="Warranty Renewal"
               count={warrantySoon.length}
-              detail="Assets expiring within 90 days"
+              detail={`Assets expiring within ${policy.warrantyAlertDays} days`}
             />
             <ReviewCard
               title="Expired Warranty"

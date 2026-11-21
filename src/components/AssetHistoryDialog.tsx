@@ -36,7 +36,7 @@ function eventIcon(action: AssetHistoryEvent['action']) {
 export function AssetHistoryDialog({ asset, users, locations, history, open, onOpenChange }: Props) {
   if (!asset) return null;
 
-  const location = locations.find((item) => item.id === asset.location);
+  const location = locations.find((item) => item.id === asset.siteId);
   const events = history
     .filter((event) => event.assetId === asset.id)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));

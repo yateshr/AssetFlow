@@ -7,28 +7,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { type Vendor } from '@/data/models';
-
-const VENDOR_CATEGORIES = [
-  'Hardware',
-  'Software',
-  'Services',
-  'Cloud',
-  'Telecom',
-  'Consulting',
-  'Other'
-];
-
-const CURRENCIES = [
-  'INR - Indian Rupee',
-  'USD - US Dollar',
-  'EUR - Euro',
-  'GBP - British Pound',
-  'AED - UAE Dirham',
-  'SGD - Singapore Dollar',
-  'AUD - Australian Dollar',
-  'CAD - Canadian Dollar',
-  'JPY - Japanese Yen'
-];
+import { useCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 
 interface VendorsPageProps {
   vendorsList: Vendor[];
@@ -38,10 +18,7 @@ interface VendorsPageProps {
 export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
-
-  const categories = [...new Set(vendorsList.map(v => v.category))];
 
   const filteredVendors = vendorsList.filter(vendor => {
     const matchesSearch = searchQuery === '' || 
@@ -49,9 +26,7 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
       vendor.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
       vendor.email.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesCategory = categoryFilter === 'all' || vendor.category === categoryFilter;
-    
-    return matchesSearch && matchesCategory;
+    return matchesSearch;
   });
 
   const handleDelete = (id: string) => {
@@ -88,16 +63,6 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
-            >
-              <option value="all">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
           </div>
         </CardContent>
       </Card>
@@ -111,7 +76,6 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
                 <TableHead>Vendor</TableHead>
                 <TableHead>Contact Person</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Category</TableHead>
                 <TableHead>Currency</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -119,7 +83,7 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
             <TableBody>
               {filteredVendors.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No vendors found
                   </TableCell>
                 </TableRow>
@@ -145,9 +109,6 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
                       <a href={`mailto:${vendor.email}`} className="text-sm text-primary hover:underline">
                         {vendor.email}
                       </a>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{vendor.category}</Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {vendor.currency || '—'}
@@ -219,16 +180,19 @@ function VendorForm({
   onSubmit: (data: Omit<Vendor, 'id'>) => void;
   onCancel: () => void;
 }) {
-  const [formData, setFormData] = useState<Omit<VendorRecord, 'id'>>({
+  const [currencies]=useCollection<MasterDataOption>('currencies');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
+  const activeCurrencies=currencies.filter(option=>option.active&&option.name.trim());
+  const [formData, setFormData] = useState<Omit<Vendor, 'id'>>({
     name: vendor?.name || '',
     contactPerson: vendor?.contactPerson || '',
     email: vendor?.email || '',
     phone: vendor?.phone || '',
     website: vendor?.website || '',
-    category: vendor?.category || VENDOR_CATEGORIES[0],
     address: vendor?.address || '',
     taxId: vendor?.taxId || '',
-    currency: vendor?.currency || CURRENCIES[0]
+    currency: vendor?.currency || activeCurrencies.find(option=>option.id===policy.defaultCurrency)?.name || activeCurrencies[0]?.name || policy.defaultCurrency
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -301,25 +265,6 @@ function VendorForm({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">Category</label>
-          <select
-            required
-            value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          >
-            {VENDOR_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-muted-foreground">
-            Select a standard category to keep vendor records consistent.
-          </p>
-        </div>
-
-        <div className="space-y-2">
           <label className="text-sm font-medium">Currency</label>
           <select
             required
@@ -327,9 +272,9 @@ function VendorForm({
             onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           >
-            {CURRENCIES.map((currency) => (
-              <option key={currency} value={currency}>
-                {currency}
+            {activeCurrencies.map((currency) => (
+              <option key={currency.id} value={currency.name}>
+                {currency.name}
               </option>
             ))}
           </select>

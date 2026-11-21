@@ -1,484 +1,53 @@
-import { useState } from 'react';
-import { 
-  Settings as SettingsIcon, 
-  Globe, 
-  Shield, 
-  Bell, 
-  Database, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle,
-  ExternalLink,
-  RefreshCw,
-} from 'lucide-react';
+import { Plus, Trash2, Database, SlidersHorizontal, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
+import { TimeZoneSelect } from '@/components/ui/timezone-select';
 
-interface Integration {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  status: 'connected' | 'disconnected' | 'error';
-  lastSync?: string;
-  category: string;
+const masters = [
+  ['currencies','Currencies'], ['units-of-measure','Units of Measure'], ['call-categories','IT Call Categories'],
+  ['call-priorities','IT Call Priorities & SLA'], ['location-types','Location Types'],
+  ['vendor-categories','Vendor Categories'], ['asset-conditions','Asset Conditions'],
+  ['license-types','License Types'], ['infrastructure-types','Infrastructure Types'], ['support-teams','Support Teams'],
+] as const;
+
+export function SettingsPage() {
+  const [policies, setPolicies] = useCollection<SystemPolicy>('system-policies');
+  const policy = policies.find(item => item.id === 'system') || DEFAULT_SYSTEM_POLICY;
+  const updatePolicy = (patch: Partial<SystemPolicy>) => setPolicies([{ ...policy, ...patch, id: 'system' }]);
+  return <div className="space-y-6">
+    <div><h2 className="text-xl font-semibold">System configuration</h2><p className="mt-1 text-sm text-muted-foreground">Database-backed reference data and organization-wide operating policies.</p></div>
+    <Tabs defaultValue="masters">
+      <TabsList><TabsTrigger value="masters"><Database className="mr-2 h-4 w-4"/>Master Data</TabsTrigger><TabsTrigger value="policies"><SlidersHorizontal className="mr-2 h-4 w-4"/>Policies</TabsTrigger><TabsTrigger value="security"><ShieldCheck className="mr-2 h-4 w-4"/>Protected Workflows</TabsTrigger></TabsList>
+      <TabsContent value="masters" className="mt-5 grid gap-4 xl:grid-cols-2">
+        {masters.map(([collection,title])=><MasterEditor key={collection} collection={collection} title={title} showSla={collection==='call-priorities'}/>) }
+      </TabsContent>
+      <TabsContent value="policies" className="mt-5">
+        <Card><CardHeader><CardTitle>Organization policies</CardTitle><CardDescription>These values drive calculations, alerts, formatting and operational defaults throughout AssetFlow.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <PolicyText label="Default currency code" value={policy.defaultCurrency} onChange={value=>updatePolicy({defaultCurrency:value.toUpperCase()})}/><PolicyText label="Locale" value={policy.locale} onChange={value=>updatePolicy({locale:value})}/><label className="space-y-1.5 text-sm font-medium">Timezone<TimeZoneSelect value={policy.timezone} onChange={timezone=>updatePolicy({timezone})}/></label><PolicyText label="Date format" value={policy.dateFormat} onChange={value=>updatePolicy({dateFormat:value})}/>
+          <PolicyNumber label="Warranty alert days" value={policy.warrantyAlertDays} onChange={value=>updatePolicy({warrantyAlertDays:value})}/><PolicyNumber label="License alert days" value={policy.licenseAlertDays} onChange={value=>updatePolicy({licenseAlertDays:value})}/><PolicyNumber label="Useful life (years)" value={policy.usefulLifeYears} onChange={value=>updatePolicy({usefulLifeYears:value})}/>
+          <label className="space-y-1.5 text-sm font-medium">Depreciation method<select className="h-10 w-full rounded-md border bg-background px-3 font-normal" value={policy.depreciationMethod} onChange={event=>updatePolicy({depreciationMethod:event.target.value as SystemPolicy['depreciationMethod']})}><option value="straight-line">Straight line</option><option value="none">No depreciation</option></select></label>
+          <PolicyText label="Default custodian" value={policy.defaultCustodian} onChange={value=>updatePolicy({defaultCustodian:value})}/><PolicyText label="Default stock location" value={policy.defaultStockLocation} onChange={value=>updatePolicy({defaultStockLocation:value})}/><PolicyText label="Default support team" value={policy.defaultSupportTeam} onChange={value=>updatePolicy({defaultSupportTeam:value})}/>
+        </CardContent></Card>
+      </TabsContent>
+      <TabsContent value="security" className="mt-5"><Card><CardHeader><CardTitle>Protected workflow values</CardTitle><CardDescription>These remain controlled because they trigger permissions, accounting and lifecycle automation.</CardDescription></CardHeader><CardContent className="grid gap-3 text-sm sm:grid-cols-2"><p><b>User roles:</b> Admin, Manager, User</p><p><b>Invoice workflow:</b> Draft, Open, Received, Paid, Overdue, Cancelled</p><p><b>Asset lifecycle:</b> Available, Assigned, Maintenance, Retired, Disposed, Lost</p><p><b>Assignment workflow:</b> Pending, Active, Returned</p></CardContent></Card></TabsContent>
+    </Tabs>
+  </div>;
 }
 
-const integrations: Integration[] = [
-  {
-    id: 'entra-id',
-    name: 'Microsoft Entra ID',
-    description: 'Sync users and groups from Azure Active Directory',
-    icon: '🔐',
-    status: 'connected',
-    lastSync: '2024-01-15T10:30:00Z',
-    category: 'Identity'
-  },
-  {
-    id: 'intune',
-    name: 'Microsoft Intune',
-    description: 'Manage device compliance and inventory',
-    icon: '📱',
-    status: 'connected',
-    lastSync: '2024-01-15T09:45:00Z',
-    category: 'Device Management'
-  },
-  {
-    id: 'jamf',
-    name: 'Jamf Pro',
-    description: 'Manage Apple devices and applications',
-    icon: '🍎',
-    status: 'disconnected',
-    category: 'Device Management'
-  },
-  {
-    id: 'okta',
-    name: 'Okta',
-    description: 'Single sign-on and user provisioning',
-    icon: '🔑',
-    status: 'disconnected',
-    category: 'Identity'
-  },
-  {
-    id: 'aws',
-    name: 'AWS',
-    description: 'Sync cloud resources and EC2 instances',
-    icon: '☁️',
-    status: 'connected',
-    lastSync: '2024-01-15T08:00:00Z',
-    category: 'Cloud'
-  },
-  {
-    id: 'azure',
-    name: 'Azure',
-    description: 'Manage Azure resources and virtual machines',
-    icon: '🌐',
-    status: 'error',
-    lastSync: '2024-01-14T15:30:00Z',
-    category: 'Cloud'
-  },
-  {
-    id: 'jira',
-    name: 'Jira',
-    description: 'Link assets to IT service tickets',
-    icon: '🎫',
-    status: 'connected',
-    lastSync: '2024-01-15T11:00:00Z',
-    category: 'ITSM'
-  },
-  {
-    id: 'servicenow',
-    name: 'ServiceNow',
-    description: 'Integrate with ITSM workflows',
-    icon: '⚙️',
-    status: 'disconnected',
-    category: 'ITSM'
-  }
-];
-
-interface BackgroundJob {
-  id: string;
-  name: string;
-  status: 'running' | 'completed' | 'failed' | 'scheduled';
-  lastRun?: string;
-  nextRun?: string;
-  duration?: string;
+function MasterEditor({collection,title,showSla}:{collection:string;title:string;showSla:boolean}) {
+  const [items,setItems]=useCollection<MasterDataOption>(collection);
+  const add=()=>setItems([...items,{id:crypto.randomUUID(),name:'',code:'',active:true,...(showSla?{targetHours:24}:{})}]);
+  const update=(id:string,patch:Partial<MasterDataOption>)=>setItems(items.map(item=>item.id===id?{...item,...patch}:item));
+  const remove=(item:MasterDataOption)=>{if(window.confirm(`Delete "${item.name||'Unnamed item'}"? Existing records retain their saved value.`))setItems(items.filter(value=>value.id!==item.id));};
+  return <Card><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle className="text-base">{title}</CardTitle><CardDescription>{items.filter(item=>item.active).length} active</CardDescription></div><Button size="sm" variant="outline" onClick={add}><Plus className="mr-1.5 h-4 w-4"/>Add</Button></CardHeader><CardContent className="space-y-2">
+    {items.map(item=><div key={item.id} className={`grid gap-2 rounded-md border p-2 ${showSla?'grid-cols-[minmax(0,1fr)_90px_90px_36px]':'grid-cols-[minmax(0,1fr)_90px_36px]'}`}><Input value={item.name} placeholder="Name" onChange={event=>update(item.id,{name:event.target.value})}/>{showSla&&<Input type="number" min="1" title="Target resolution hours" value={item.targetHours||''} onChange={event=>update(item.id,{targetHours:Number(event.target.value)||1})}/>}<label className="flex items-center justify-center gap-1 text-xs"><input type="checkbox" checked={item.active} onChange={event=>update(item.id,{active:event.target.checked})}/>Active</label><Button variant="ghost" size="icon-sm" onClick={()=>remove(item)}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>)}
+    {!items.length&&<p className="py-4 text-center text-sm text-muted-foreground">No records configured.</p>}
+  </CardContent></Card>;
 }
 
-const backgroundJobs: BackgroundJob[] = [
-  {
-    id: 'job-1',
-    name: 'Asset Sync - Intune',
-    status: 'completed',
-    lastRun: '2024-01-15T09:45:00Z',
-    nextRun: '2024-01-15T15:45:00Z',
-    duration: '2m 34s'
-  },
-  {
-    id: 'job-2',
-    name: 'User Sync - Entra ID',
-    status: 'completed',
-    lastRun: '2024-01-15T10:30:00Z',
-    nextRun: '2024-01-15T16:30:00Z',
-    duration: '1m 12s'
-  },
-  {
-    id: 'job-3',
-    name: 'Warranty Check',
-    status: 'running',
-    lastRun: '2024-01-15T11:00:00Z',
-    duration: 'Running...'
-  },
-  {
-    id: 'job-4',
-    name: 'License Compliance Report',
-    status: 'scheduled',
-    nextRun: '2024-01-16T02:00:00Z'
-  },
-  {
-    id: 'job-5',
-    name: 'Azure Resource Sync',
-    status: 'failed',
-    lastRun: '2024-01-14T15:30:00Z',
-    duration: '45s'
-  }
-];
-
-interface SettingsPageProps {}
-
-export function SettingsPage({}: SettingsPageProps) {
-  const [activeTab, setActiveTab] = useState('general');
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      connected: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
-      disconnected: 'bg-muted text-muted-foreground border-muted',
-      error: 'bg-destructive/10 text-destructive border-destructive/20',
-      running: 'bg-primary/10 text-primary border-primary/20',
-      completed: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
-      failed: 'bg-destructive/10 text-destructive border-destructive/20',
-      scheduled: 'bg-chart-5/10 text-chart-5 border-chart-5/20'
-    };
-    return variants[status as keyof typeof variants];
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'connected':
-      case 'completed':
-        return CheckCircle2;
-      case 'disconnected':
-        return XCircle;
-      case 'error':
-      case 'failed':
-        return AlertCircle;
-      case 'running':
-        return RefreshCw;
-      case 'scheduled':
-        return Clock;
-      default:
-        return AlertCircle;
-    }
-  };
-
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  return (
-    <div className="af-stagger space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Manage system configuration and integrations</p>
-      </div>
-
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="jobs">Background Jobs</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-        </TabsList>
-
-        {/* General Settings */}
-        <TabsContent value="general" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Organization Settings</CardTitle>
-              <CardDescription>Configure your organization details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Organization Name</label>
-                  <Input defaultValue="Acme Corporation" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Admin Email</label>
-                  <Input type="email" defaultValue="admin@acme.com" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Timezone</label>
-                  <select className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm">
-                    <option>America/New_York</option>
-                    <option>America/Chicago</option>
-                    <option>America/Denver</option>
-                    <option>America/Los_Angeles</option>
-                    <option>Europe/London</option>
-                    <option>Europe/Paris</option>
-                    <option>Asia/Tokyo</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Date Format</label>
-                  <select className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm">
-                    <option>MM/DD/YYYY</option>
-                    <option>DD/MM/YYYY</option>
-                    <option>YYYY-MM-DD</option>
-                  </select>
-                </div>
-              </div>
-              <Button>Save Changes</Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>Configure email and system notifications</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Warranty Expiry Alerts</p>
-                    <p className="text-sm text-muted-foreground">Receive alerts 30 days before warranty expires</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                </label>
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">License Expiry Alerts</p>
-                    <p className="text-sm text-muted-foreground">Receive alerts 60 days before license expires</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                </label>
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Assignment Notifications</p>
-                    <p className="text-sm text-muted-foreground">Notify users when assets are assigned</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                </label>
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Maintenance Reminders</p>
-                    <p className="text-sm text-muted-foreground">Send reminders for scheduled maintenance</p>
-                  </div>
-                  <input type="checkbox" className="h-4 w-4" />
-                </label>
-              </div>
-              <Button>Save Preferences</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Departments */}
-        
-
-        {/* Integrations */}
-        <TabsContent value="integrations" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Connected Integrations</CardTitle>
-              <CardDescription>Manage third-party service integrations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {integrations.map((integration) => {
-                  const StatusIcon = getStatusIcon(integration.status);
-                  return (
-                    <Card key={integration.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="text-2xl">{integration.icon}</div>
-                            <div>
-                              <h3 className="font-semibold text-foreground">{integration.name}</h3>
-                              <Badge variant="outline" className="text-xs mt-1">
-                                {integration.category}
-                              </Badge>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className={getStatusBadge(integration.status)}>
-                            <StatusIcon className="h-3 w-3 mr-1" />
-                            {integration.status}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          {integration.description}
-                        </p>
-                        {integration.lastSync && (
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Last sync: {formatDateTime(integration.lastSync)}
-                          </p>
-                        )}
-                        <div className="flex gap-2">
-                          {integration.status === 'connected' ? (
-                            <>
-                              <Button variant="outline" size="sm">
-                                <RefreshCw className="h-3 w-3 mr-1" />
-                                Sync Now
-                              </Button>
-                              <Button variant="ghost" size="sm">
-                                Configure
-                              </Button>
-                            </>
-                          ) : (
-                            <Button size="sm">
-                              Connect
-                            </Button>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Background Jobs */}
-        <TabsContent value="jobs" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Background Jobs</CardTitle>
-              <CardDescription>Monitor and manage automated tasks</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {backgroundJobs.map((job) => {
-                  const StatusIcon = getStatusIcon(job.status);
-                  return (
-                    <div key={job.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <StatusIcon className={`h-5 w-5 ${
-                          job.status === 'running' ? 'animate-spin text-primary' :
-                          job.status === 'failed' ? 'text-destructive' :
-                          job.status === 'completed' ? 'text-chart-2' :
-                          'text-muted-foreground'
-                        }`} />
-                        <div>
-                          <p className="font-medium text-foreground">{job.name}</p>
-                          <div className="flex gap-4 text-xs text-muted-foreground mt-1">
-                            {job.lastRun && <span>Last run: {formatDateTime(job.lastRun)}</span>}
-                            {job.nextRun && <span>Next run: {formatDateTime(job.nextRun)}</span>}
-                            {job.duration && <span>Duration: {job.duration}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className={getStatusBadge(job.status)}>
-                        {job.status}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security */}
-        <TabsContent value="security" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Role-Based Access Control</CardTitle>
-              <CardDescription>Configure user roles and permissions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="p-4 border border-border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-foreground">Admin</h3>
-                    <Badge>Full Access</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Complete system access including user management, settings, and all data operations
-                  </p>
-                </div>
-                <div className="p-4 border border-border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-foreground">Manager</h3>
-                    <Badge variant="outline">Limited Access</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Can view and manage assets, users, and assignments within their department
-                  </p>
-                </div>
-                <div className="p-4 border border-border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-foreground">User</h3>
-                    <Badge variant="outline">View Only</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Can view assigned assets and request new equipment
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Security Settings</CardTitle>
-              <CardDescription>Configure authentication and security policies</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Two-Factor Authentication</p>
-                    <p className="text-sm text-muted-foreground">Require 2FA for all users</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                </label>
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Session Timeout</p>
-                    <p className="text-sm text-muted-foreground">Auto-logout after inactivity</p>
-                  </div>
-                  <select className="px-3 py-1 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm">
-                    <option>15 minutes</option>
-                    <option>30 minutes</option>
-                    <option>1 hour</option>
-                    <option>4 hours</option>
-                  </select>
-                </label>
-                <label className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Password Policy</p>
-                    <p className="text-sm text-muted-foreground">Enforce strong password requirements</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                </label>
-              </div>
-              <Button>Save Security Settings</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+function PolicyText({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}) { return <label className="space-y-1.5 text-sm font-medium">{label}<Input value={value} onChange={event=>onChange(event.target.value)}/></label>; }
+function PolicyNumber({label,value,onChange}:{label:string;value:number;onChange:(value:number)=>void}) { return <label className="space-y-1.5 text-sm font-medium">{label}<Input type="number" min="0" value={value} onChange={event=>onChange(Number(event.target.value)||0)}/></label>; }

@@ -4,17 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsPage } from './SettingsPage';
 import { ConfigurationPage } from './ConfigurationPage';
-import type { Location, User } from '@/data/models';
+import type { AssetCategory, Location, User } from '@/data/models';
+import type { Company } from '@/data/models';
+import { CompanyManagement } from './CompanyManagement';
 
 interface SettingsWithOrganizationPageProps {
   usersList: User[];
   onUsersChange: (users: User[]) => void;
-  locationsList: Location[];
-  onLocationsChange: (locations: Location[]) => void;
+  sitesList: Location[];
+  onSitesChange: (locations: Location[]) => void;
+  assetCategories: AssetCategory[];
+  onAssetCategoriesChange: (categories: AssetCategory[]) => void;
+  companies: Company[];
+  onCompaniesChanged: () => void;
 }
 
 export function SettingsWithOrganizationPage(props: SettingsWithOrganizationPageProps) {
-  const [tab, setTab] = useState<'general' | 'organization'>('general');
+  const [tab, setTab] = useState<'system' | 'company'>('system');
 
   return (
     <div className="af-stagger space-y-6">
@@ -29,27 +35,27 @@ export function SettingsWithOrganizationPage(props: SettingsWithOrganizationPage
         <CardContent className="p-2">
           <div className="flex flex-wrap gap-2">
             <Button
-              variant={tab === 'general' ? 'default' : 'ghost'}
-              onClick={() => setTab('general')}
+              variant={tab === 'system' ? 'default' : 'ghost'}
+              onClick={() => setTab('system')}
             >
               <Settings className="mr-2 h-4 w-4" />
-              General Settings
+              System Settings
             </Button>
             <Button
-              variant={tab === 'organization' ? 'default' : 'ghost'}
-              onClick={() => setTab('organization')}
+              variant={tab === 'company' ? 'default' : 'ghost'}
+              onClick={() => setTab('company')}
             >
               <Building2 className="mr-2 h-4 w-4" />
-              Organization Setup
+              Company Setup
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {tab === 'general' ? (
+      {tab === 'system' ? (
         <SettingsPage />
       ) : (
-        <ConfigurationPage {...props} />
+        <div className="space-y-6"><CompanyManagement companies={props.companies} locations={props.sitesList} onChanged={props.onCompaniesChanged}/><ConfigurationPage {...props} /></div>
       )}
     </div>
   );

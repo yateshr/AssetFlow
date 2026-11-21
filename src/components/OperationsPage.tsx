@@ -1,4 +1,4 @@
-import { kv } from '@/lib/db';
+import { kv, useCollection } from '@/lib/db';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Wrench, ClipboardList, BellRing, Calculator, QrCode, Upload, Download,
@@ -15,13 +15,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Asset, User, MaintenanceRecord, AssetHistoryEvent } from '@/data/models';
 import { formatCurrency, formatDate } from '@/data/models';
+import type { AssetCategory } from '@/data/models';
+import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 
 type RequestStatus = 'pending' | 'approved' | 'rejected' | 'completed';
 type AssetRequest = { id: string; userId: string; assetType: string; reason: string; date: string; status: RequestStatus };
 type StockItem = { id: string; name: string; sku: string; category: string; quantity: number; minQuantity: number; unitCost: number; location: string };
 type StockMovement = { id: string; stockId: string; itemName: string; type: 'received'|'issued'|'returned'|'adjusted'; quantity: number; before: number; after: number; reason: string; performedBy: string; timestamp: string };
 type DeviceSpec = { assetId: string; enabled: boolean; hostname: string; os: string; osVersion: string; cpu: string; ram: string; storage: string; gpu: string; macAddress: string; ipAddress: string; biosVersion: string; encryption: boolean; antivirus: boolean; edr: boolean; lastCheckIn: string };
-type Infrastructure = { id: string; name: string; type: 'server'|'router'|'switch'|'firewall'|'access-point'|'ups'|'printer'|'other'; ipAddress: string; macAddress: string; hostname: string; location: string; status: 'online'|'offline'|'maintenance'; vendor: string; model: string; notes: string };
+type Infrastructure = { id: string; name: string; type: string; ipAddress: string; macAddress: string; hostname: string; location: string; status: 'online'|'offline'|'maintenance'; vendor: string; model: string; notes: string };
 type Notification = { id: string; title: string; detail: string; severity: 'info'|'warning'|'critical'; read: boolean; createdAt: string; tab?: string };
 type AuditEvent = { id: string; timestamp: string; action: string; entityType: string; entityId: string; entityName: string; userName: string; details: string };
 
@@ -51,6 +53,10 @@ const blankSpec = (assetId: string): DeviceSpec => ({
 });
 
 export function OperationsPage({ assetsList, onAssetsChange, usersList, history, onHistoryChange, currentUser, initialTab='overview', onNotificationsChange, notificationOpen=false, onNotificationOpenChange }: OperationsPageProps) {
+  const [assetCategories]=useCollection<AssetCategory>('asset-categories');
+  const [infrastructureTypes]=useCollection<MasterDataOption>('infrastructure-types');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [tab, setTab] = useState(initialTab);
   const [requests, setRequests] = useState<AssetRequest[]>(requestSeed);
   const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
@@ -66,11 +72,11 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
   const [selectedInfraId, setSelectedInfraId] = useState('');
   const [myAssetUser, setMyAssetUser] = useState(usersList[0]?.id || '');
   const [requestUser, setRequestUser] = useState(usersList[0]?.id || '');
-  const [requestType, setRequestType] = useState('laptop');
+  const [requestType, setRequestType] = useState(assetCategories.find(option=>option.active)?.id||'');
   const [requestReason, setRequestReason] = useState('');
   const [labelSearch, setLabelSearch] = useState('');
-  const [deprYears, setDeprYears] = useState('4');
-  const [deprMethod, setDeprMethod] = useState<'straight'|'none'>('straight');
+  const [deprYears, setDeprYears] = useState(String(policy.usefulLifeYears));
+  const [deprMethod, setDeprMethod] = useState<'straight'|'none'>(policy.depreciationMethod==='none'?'none':'straight');
   const [importMessage, setImportMessage] = useState('');
   const [stockSearch, setStockSearch] = useState('');
   const [stockFilter, setStockFilter] = useState<'all'|'low'>('all');
@@ -119,7 +125,7 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
     const expiry = new Date(a.warrantyExpiry);
     const days = Math.ceil((expiry.getTime() - Date.now()) / 86400000);
     return { asset:a, days };
-  }).filter(x => Number.isFinite(x.days) && x.days <= 90), [assetsList]);
+  }).filter(x => Number.isFinite(x.days) && x.days <= policy.warrantyAlertDays), [assetsList, policy.warrantyAlertDays]);
 
   const notifications = useMemo<Notification[]>(() => {
     const result: Notification[] = [];
@@ -159,7 +165,7 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
   const addMaintenance = (asset: Asset) => {
     if (maintenance.some(m => m.assetId === asset.id && m.status !== 'completed')) return;
     const now = new Date().toISOString();
-    const record: MaintenanceRecord = { id:`M-${Date.now()}`, assetId:asset.id, assetName:asset.name, date:now.slice(0,10), type:'repair', description:'Repair ticket opened from Operations', cost:0, technician:'IT Team', status:'in-progress' };
+    const record: MaintenanceRecord = { id:`M-${Date.now()}`, assetId:asset.id, assetName:asset.name, date:now.slice(0,10), type:'repair', description:'Repair ticket opened from Operations', cost:0, technician:policy.defaultSupportTeam, status:'in-progress' };
     setMaintenance(prev=>[record,...prev]);
     onAssetsChange(assetsList.map(a=>a.id===asset.id?{...a,status:'maintenance'}:a));
     addHistory({id:`H-${Date.now()}`,assetId:asset.id,timestamp:now,action:'Under Repair',performedBy:currentUser.id,from:asset.status,to:'maintenance',reason:'Repair ticket opened',notes:record.description});
@@ -202,7 +208,7 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
     const name=window.prompt('Stock item name');
     if(!name?.trim()) return;
     const qty=Number(window.prompt('Starting quantity','0')||0);
-    const item:StockItem={id:`STK-${Date.now()}`,name:name.trim(),sku:`SKU-${Date.now().toString().slice(-5)}`,category:'General',quantity:Math.max(0,qty),minQuantity:5,unitCost:0,location:'IT Store'};
+    const item:StockItem={id:`STK-${Date.now()}`,name:name.trim(),sku:`SKU-${Date.now().toString().slice(-5)}`,category:'General',quantity:Math.max(0,qty),minQuantity:5,unitCost:0,location:policy.defaultStockLocation};
     setStock(prev=>[item,...prev]);
     if(qty>0) setMovements(prev=>[{id:`SM-${Date.now()}`,stockId:item.id,itemName:item.name,type:'received',quantity:qty,before:0,after:qty,reason:'Initial stock',performedBy:currentUser.name,timestamp:new Date().toISOString()},...prev]);
   };
@@ -262,8 +268,8 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
       const manufacturerIdx=idx(['manufacturer','make']),modelIdx=idx(['model']),statusIdx=idx(['status']),purchaseDateIdx=idx(['purchase date','purchasedate']),priceIdx=idx(['purchase price','purchaseprice','price']),warrantyIdx=idx(['warranty expiry','warrantyexpiry']);
       const rows=lines.slice(1).map(line=>line.split(',').map(clean)).filter(r=>r.length>=3);
       if(tagIdx<0||nameIdx<0||typeIdx<0||serialIdx<0){setImportMessage('Required columns missing. Include at least Asset Tag, Name, Type and Serial Number.');return;}
-      const existingTags=new Set(assetsList.map(a=>a.assetTag.toLowerCase())); const allowedTypes=new Set(['laptop','desktop','monitor','phone','tablet','printer','server','accessory']); const newAssets:Asset[]=[]; let skipped=0;
-      rows.forEach((r,n)=>{const tag=r[tagIdx]||`IMP-${Date.now()}-${n+1}`,serial=r[serialIdx]||'',name=r[nameIdx]||'Imported Asset',type=(r[typeIdx]||'accessory').toLowerCase(); if(existingTags.has(tag.toLowerCase())||!allowedTypes.has(type)){skipped++;return;} newAssets.push({id:`AST-IMP-${Date.now()}-${n+1}`,name,type:type as Asset['type'],manufacturer:manufacturerIdx>=0?r[manufacturerIdx]||'':'',model:modelIdx>=0?r[modelIdx]||'':'',serialNumber:serial,assetTag:tag,status:statusIdx>=0&&['available','assigned','maintenance','retired','disposed','lost'].includes(r[statusIdx])?r[statusIdx] as Asset['status']:'available',purchaseDate:purchaseDateIdx>=0&&r[purchaseDateIdx]?r[purchaseDateIdx]:new Date().toISOString().slice(0,10),purchasePrice:priceIdx>=0?Number(r[priceIdx])||0:0,warrantyExpiry:warrantyIdx>=0&&r[warrantyIdx]?r[warrantyIdx]:'',location:'',notes:'Imported from CSV'}); existingTags.add(tag.toLowerCase());});
+      const existingTags=new Set(assetsList.map(a=>a.assetTag.toLowerCase())); const allowedTypes=new Set(assetCategories.filter(category=>category.active).map(category=>category.id)); const newAssets:Asset[]=[]; let skipped=0;
+      rows.forEach((r,n)=>{const tag=r[tagIdx]||`IMP-${Date.now()}-${n+1}`,serial=r[serialIdx]||'',name=r[nameIdx]||'Imported Asset',type=(r[typeIdx]||'accessory').toLowerCase(); if(existingTags.has(tag.toLowerCase())||!allowedTypes.has(type)){skipped++;return;} newAssets.push({id:`AST-IMP-${Date.now()}-${n+1}`,name,type:type as Asset['type'],manufacturer:manufacturerIdx>=0?r[manufacturerIdx]||'':'',model:modelIdx>=0?r[modelIdx]||'':'',serialNumber:serial,assetTag:tag,status:statusIdx>=0&&['available','assigned','maintenance','retired','disposed','lost'].includes(r[statusIdx])?r[statusIdx] as Asset['status']:'available',purchaseDate:purchaseDateIdx>=0&&r[purchaseDateIdx]?r[purchaseDateIdx]:new Date().toISOString().slice(0,10),purchasePrice:priceIdx>=0?Number(r[priceIdx])||0:0,warrantyExpiry:warrantyIdx>=0&&r[warrantyIdx]?r[warrantyIdx]:'',siteId:'',notes:'Imported from CSV'}); existingTags.add(tag.toLowerCase());});
       onAssetsChange([...assetsList,...newAssets]); setImportMessage(`Imported ${newAssets.length} assets. Skipped ${skipped} duplicate/invalid rows.`);
     }; reader.readAsText(file);
   };
@@ -285,7 +291,7 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
   const reportByType=Object.entries(filteredAssetsReport.reduce<Record<string,number>>((acc,a)=>{acc[a.type]=(acc[a.type]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]);
   const reportByStatus=Object.entries(filteredAssetsReport.reduce<Record<string,number>>((acc,a)=>{acc[a.status]=(acc[a.status]||0)+1;return acc;},{}));
   const reportValue=filteredAssetsReport.reduce((s,a)=>s+a.purchasePrice,0);
-  const reportWarranty=filteredAssetsReport.filter(a=>{const d=Math.ceil((new Date(a.warrantyExpiry).getTime()-Date.now())/86400000);return Number.isFinite(d)&&d<=90;}).length;
+  const reportWarranty=filteredAssetsReport.filter(a=>{const d=Math.ceil((new Date(a.warrantyExpiry).getTime()-Date.now())/86400000);return Number.isFinite(d)&&d<=policy.warrantyAlertDays;}).length;
   const reportAvgAge=filteredAssetsReport.length?filteredAssetsReport.reduce((s,a)=>s+Math.max(0,(Date.now()-new Date(a.purchaseDate).getTime())/86400000),0)/filteredAssetsReport.length/365.25:0;
 
   const auditEvents=useMemo<AuditEvent[]>(()=>{
@@ -451,11 +457,11 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
 
     {tab==='my-assets'&&<Card><CardHeader><CardTitle>My Assets</CardTitle></CardHeader><CardContent className="space-y-4"><select value={myAssetUser} onChange={e=>setMyAssetUser(e.target.value)} className="h-10 px-3 border rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">{usersList.map(u=><option key={u.id} value={u.id}>{u.name} • {u.department}</option>)}</select><Table><TableHeader><TableRow><TableHead>Asset</TableHead><TableHead>Tag</TableHead><TableHead>Status</TableHead><TableHead>Warranty</TableHead></TableRow></TableHeader><TableBody>{assetsList.filter(a=>a.assignedTo===myAssetUser).map(a=>{const d=Math.ceil((new Date(a.warrantyExpiry).getTime()-Date.now())/86400000);return <TableRow key={a.id}><TableCell><b>{a.name}</b><div className="text-xs text-muted-foreground">{a.manufacturer} {a.model}</div></TableCell><TableCell className="font-mono">{a.assetTag}</TableCell><TableCell><Badge variant="outline">{a.status}</Badge></TableCell><TableCell>{Number.isFinite(d)?(d<0?<Badge variant="destructive">Expired</Badge>:<span>{d} days</span>):'-'}</TableCell></TableRow>})}</TableBody></Table></CardContent></Card>}
 
-    <Dialog open={showRequest} onOpenChange={setShowRequest}><DialogContent><DialogHeader><DialogTitle>New Asset Request</DialogTitle><DialogDescription>Submit a local request for IT equipment.</DialogDescription></DialogHeader><div className="space-y-4"><label className="text-sm">Employee<select value={requestUser} onChange={e=>setRequestUser(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">{usersList.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><label className="text-sm">Asset type<select value={requestType} onChange={e=>setRequestType(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">{['laptop','desktop','monitor','phone','tablet','printer','server','accessory'].map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm">Reason<Input value={requestReason} onChange={e=>setRequestReason(e.target.value)} placeholder="Why is this equipment required?" className="mt-1"/></label></div><DialogFooter><Button onClick={createRequest} disabled={!requestReason.trim()}>Submit Request</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={showRequest} onOpenChange={setShowRequest}><DialogContent><DialogHeader><DialogTitle>New Asset Request</DialogTitle><DialogDescription>Submit a local request for IT equipment.</DialogDescription></DialogHeader><div className="space-y-4"><label className="text-sm">Employee<select value={requestUser} onChange={e=>setRequestUser(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-lg bg-background">{usersList.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><label className="text-sm">Asset type<select value={requestType} onChange={e=>setRequestType(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-lg bg-background">{assetCategories.filter(option=>option.active).map(option=><option key={option.id} value={option.id}>{option.name}</option>)}</select></label><label className="text-sm">Reason<Input value={requestReason} onChange={e=>setRequestReason(e.target.value)} placeholder="Why is this equipment required?" className="mt-1"/></label></div><DialogFooter><Button onClick={createRequest} disabled={!requestReason.trim()}>Submit Request</Button></DialogFooter></DialogContent></Dialog>
 
     <Dialog open={showSpec} onOpenChange={setShowSpec}><DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Optional Device Specification</DialogTitle><DialogDescription>Enable detailed technical tracking only when required for this device.</DialogDescription></DialogHeader>{selectedAssetId&&<div className="space-y-4"><div className="grid sm:grid-cols-2 gap-3">{(['hostname','os','osVersion','cpu','ram','storage','gpu','macAddress','ipAddress','biosVersion','lastCheckIn'] as const).map(key=><label key={key} className="text-sm capitalize">{key.replace(/([A-Z])/g,' $1')}<Input className="mt-1" value={String(specs[selectedAssetId]?.[key]||'')} onChange={e=>updateSpec(key,e.target.value)}/></label>)}</div><div className="flex flex-wrap gap-5 text-sm"><label><input type="checkbox" checked={!!specs[selectedAssetId]?.encryption} onChange={e=>updateSpec('encryption',e.target.checked)}/> Encryption</label><label><input type="checkbox" checked={!!specs[selectedAssetId]?.antivirus} onChange={e=>updateSpec('antivirus',e.target.checked)}/> Antivirus</label><label><input type="checkbox" checked={!!specs[selectedAssetId]?.edr} onChange={e=>updateSpec('edr',e.target.checked)}/> EDR</label></div></div>}<DialogFooter><Button variant="outline" onClick={()=>setShowSpec(false)}>Cancel</Button><Button onClick={saveSpec}>Save</Button></DialogFooter></DialogContent></Dialog>
 
-    <Dialog open={showInfra} onOpenChange={setShowInfra}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{infraForm.id?'Edit Infrastructure Device':'Add Infrastructure Device'}</DialogTitle><DialogDescription>Track network and infrastructure equipment.</DialogDescription></DialogHeader><div className="grid sm:grid-cols-2 gap-3">{(['name','ipAddress','macAddress','hostname','location','vendor','model'] as const).map(key=><label key={key} className="text-sm capitalize">{key.replace(/([A-Z])/g,' $1')}<Input className="mt-1" value={infraForm[key]} onChange={e=>setInfraForm({...infraForm,[key]:e.target.value})}/></label>)}<label className="text-sm">Type<select className="mt-1 w-full px-3 py-2 border rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={infraForm.type} onChange={e=>setInfraForm({...infraForm,type:e.target.value as Infrastructure['type']})}>{['server','router','switch','firewall','access-point','ups','printer','other'].map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm">Status<select className="mt-1 w-full px-3 py-2 border rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={infraForm.status} onChange={e=>setInfraForm({...infraForm,status:e.target.value as Infrastructure['status']})}>{['online','offline','maintenance'].map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm sm:col-span-2">Notes<Input className="mt-1" value={infraForm.notes} onChange={e=>setInfraForm({...infraForm,notes:e.target.value})}/></label></div><DialogFooter><Button variant="outline" onClick={()=>setShowInfra(false)}>Cancel</Button><Button onClick={saveInfra}>Save Device</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={showInfra} onOpenChange={setShowInfra}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{infraForm.id?'Edit Infrastructure Device':'Add Infrastructure Device'}</DialogTitle><DialogDescription>Track network and infrastructure equipment.</DialogDescription></DialogHeader><div className="grid sm:grid-cols-2 gap-3">{(['name','ipAddress','macAddress','hostname','location','vendor','model'] as const).map(key=><label key={key} className="text-sm capitalize">{key.replace(/([A-Z])/g,' $1')}<Input className="mt-1" value={infraForm[key]} onChange={e=>setInfraForm({...infraForm,[key]:e.target.value})}/></label>)}<label className="text-sm">Type<select className="mt-1 w-full px-3 py-2 border rounded-lg bg-background" value={infraForm.type} onChange={e=>setInfraForm({...infraForm,type:e.target.value})}>{infrastructureTypes.filter(option=>option.active).map(option=><option key={option.id} value={option.id}>{option.name}</option>)}</select></label><label className="text-sm">Status<select className="mt-1 w-full px-3 py-2 border rounded-lg bg-background" value={infraForm.status} onChange={e=>setInfraForm({...infraForm,status:e.target.value as Infrastructure['status']})}>{['online','offline','maintenance'].map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm sm:col-span-2">Notes<Input className="mt-1" value={infraForm.notes} onChange={e=>setInfraForm({...infraForm,notes:e.target.value})}/></label></div><DialogFooter><Button variant="outline" onClick={()=>setShowInfra(false)}>Cancel</Button><Button onClick={saveInfra}>Save Device</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }
 

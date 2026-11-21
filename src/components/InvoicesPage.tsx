@@ -1,14 +1,18 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { Plus, Search, Eye, Edit, Trash2, PackagePlus, CheckCircle2, CreditCard, ArrowLeft, X, CalendarDays, Rows3, AlertTriangle } from 'lucide-react';
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Plus, Search, Eye, Edit, Trash2, PackagePlus, CheckCircle2, CreditCard, X, CalendarDays, Rows3, AlertTriangle, ChevronsUpDown, Check, Paperclip, Download, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 import {
   type Invoice, type InvoiceLineItem, type InvoiceStatus, type Asset, type AssetType,
-  type Vendor, type User, type AssetHistoryEvent, formatCurrency, formatDate
+  type Vendor, type User, type Location, type AssetHistoryEvent, type AssetCategory, formatCurrency, formatDate
 } from '@/data/models';
 
 interface InvoicesPageProps {
@@ -21,10 +25,13 @@ interface InvoicesPageProps {
   currentUser: User;
   history: AssetHistoryEvent[];
   onHistoryChange: (events: AssetHistoryEvent[]) => void;
+  assetCategories: AssetCategory[];
+  sitesList: Location[];
 }
 
 const STATUS_STYLES: Record<InvoiceStatus, string> = {
   draft: 'bg-muted text-muted-foreground border-muted',
+  open: 'bg-primary/10 text-primary border-primary/20',
   received: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
   'partially-received': 'bg-chart-5/10 text-chart-5 border-chart-5/20',
   paid: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
@@ -33,22 +40,11 @@ const STATUS_STYLES: Record<InvoiceStatus, string> = {
   cancelled: 'bg-destructive/10 text-destructive border-destructive/20'
 };
 
-const ASSET_TYPES: { value: AssetType; label: string }[] = [
-  ['laptop','Laptop'],['desktop','Desktop'],['monitor','Monitor'],['phone','Phone'],
-  ['tablet','Tablet'],['printer','Printer'],['server','Server'],['accessory','Accessory']
-].map(([value,label]) => ({ value: value as AssetType, label }));
-
-const CURRENCIES = [
-  'INR - Indian Rupee','USD - US Dollar','EUR - Euro','GBP - British Pound',
-  'AED - UAE Dirham','SGD - Singapore Dollar','AUD - Australian Dollar',
-  'CAD - Canadian Dollar','JPY - Japanese Yen'
-];
-
 type EditableInvoiceLineItem = InvoiceLineItem & { itemDescription?: string };
 
-const emptyLine = (): EditableInvoiceLineItem => ({
+const emptyLine = (assetType: AssetType = 'accessory'): EditableInvoiceLineItem => ({
   id: `INVL-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-  description: '', quantity: 1, unitPrice: 0, taxRate: 0, assetType: 'laptop',
+  description: '', quantity: 1, unitPrice: 0, taxRate: 0, assetType,
   manufacturer: '', model: '', receivedQuantity: 0
 });
 
@@ -60,18 +56,21 @@ function money(value: number, currency: string) {
 
 export function InvoicesPage({
   invoicesList, onInvoicesChange, assetsList, onAssetsChange, vendorsList,
-  onVendorsChange, currentUser, history, onHistoryChange
+  onVendorsChange, currentUser, history, onHistoryChange, assetCategories, sitesList
 }: InvoicesPageProps) {
+  const [systemPolicies]=useCollection<SystemPolicy>('system-policies');
+  const systemPolicy=systemPolicies[0]||DEFAULT_SYSTEM_POLICY;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [viewing, setViewing] = useState<Invoice | null>(null);
-  const [receiving, setReceiving] = useState<Invoice | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
 
   const vendorName = (id: string) => vendorsList.find(v => v.id === id)?.name || 'Unknown vendor';
-  const filtered = invoicesList.filter(invoice => {
+  const isSuperAdmin = ['super_admin','admin'].includes(currentUser.role);
+  const invoicesInScope = isSuperAdmin ? invoicesList : invoicesList.filter(invoice => invoice.siteId === currentUser.siteId);
+  const filtered = invoicesInScope.filter(invoice => {
     const q = search.toLowerCase();
     return (!q || invoice.invoiceNumber.toLowerCase().includes(q) ||
       vendorName(invoice.vendorId).toLowerCase().includes(q) ||
@@ -98,49 +97,6 @@ export function InvoicesPage({
       onInvoicesChange(invoicesList.filter(i => i.id !== invoice.id));
   };
 
-  const handleReceive = (invoice: Invoice, receiveQuantities: Record<string, number>) => {
-    let nextAssets = [...assetsList];
-    const events: AssetHistoryEvent[] = [];
-    const nextItems = invoice.lineItems.map(item => {
-      const remaining = Math.max(0, item.quantity - item.receivedQuantity);
-      const requested = Math.max(0, Math.min(remaining, Math.floor(receiveQuantities[item.id] ?? remaining)));
-      for (let index=0; index<requested; index++) {
-        const n = nextAssets.length + 1;
-        const asset: Asset = {
-          id:`AST-${String(n).padStart(3,'0')}`, name:item.description,
-          type:item.assetType || 'accessory',
-          manufacturer:item.manufacturer || vendorName(invoice.vendorId),
-          model:item.model || item.description, serialNumber:'',
-          assetTag:`AST-${String(n).padStart(3,'0')}`, status:'available',
-          purchaseDate:invoice.invoiceDate, purchasePrice:item.unitPrice,
-          warrantyExpiry:new Date(new Date(invoice.invoiceDate).setFullYear(new Date(invoice.invoiceDate).getFullYear()+1)).toISOString().split('T')[0],
-          location:'IT Asset Manager', vendorId:invoice.vendorId, invoiceId:invoice.id,
-          invoiceItemId:item.id, notes:`Purchased on invoice ${invoice.invoiceNumber}`
-        };
-        nextAssets.push(asset);
-        const t = new Date().toISOString();
-        events.push({ id:`HIST-${Date.now()}-${n}-${index}`, assetId:asset.id, timestamp:t, action:'Purchased',
-          performedBy:currentUser.name, from:vendorName(invoice.vendorId), to:'IT Asset Manager',
-          notes:`Purchased on invoice ${invoice.invoiceNumber}`, cost:item.unitPrice });
-        events.push({ id:`HIST-${Date.now()}-${n}-${index}-received`, assetId:asset.id,
-          timestamp:new Date(Date.now()+1).toISOString(), action:'Received',
-          performedBy:currentUser.name, to:'IT Asset Manager',
-          notes:`Received against invoice ${invoice.invoiceNumber}` });
-      }
-      return {...item, receivedQuantity:item.receivedQuantity + requested};
-    });
-    onAssetsChange(nextAssets);
-    onHistoryChange([...history,...events]);
-    const allReceived = nextItems.every(item => item.receivedQuantity >= item.quantity);
-    const anyReceived = nextItems.some(item => item.receivedQuantity > 0);
-    onInvoicesChange(invoicesList.map(i => i.id===invoice.id ? {
-      ...invoice,
-      lineItems: nextItems,
-      status: (allReceived ? 'received' : anyReceived ? 'partially-received' : invoice.status) as InvoiceStatus
-    } : i));
-    setReceiving(null);
-  };
-
   const handlePayment = (data:{amount:number;date:string;reference:string;method:string}) => {
     if (!paymentInvoice) return;
     const outstanding = Math.max(0, paymentInvoice.total - paymentInvoice.amountPaid);
@@ -155,6 +111,25 @@ export function InvoicesPage({
     onInvoicesChange(invoicesList.map(i => i.id===paymentInvoice.id ? updated : i));
     setPaymentInvoice(null);
   };
+
+  if (showCreate || editing) {
+    return (
+      <div className="af-page -m-3 min-h-full bg-background sm:-m-4 md:-m-6 lg:-m-7">
+        <InvoiceForm
+          invoice={editing}
+          invoices={invoicesList}
+          vendors={vendorsList}
+          onVendorsChange={onVendorsChange}
+          onSubmit={editing ? updateInvoice : createInvoice}
+          onCancel={() => { setShowCreate(false); setEditing(null); }}
+          assetCategories={assetCategories}
+          sitesList={sitesList}
+          defaultSiteId={isSuperAdmin ? '' : currentUser.siteId}
+          canChooseLocation={isSuperAdmin}
+        />
+      </div>
+    );
+  }
 
   return <div className="af-stagger space-y-6">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -182,25 +157,13 @@ export function InvoicesPage({
           <Button variant="ghost" size="icon-sm" title="View" onClick={()=>setViewing(invoice)}><Eye className="h-4 w-4"/></Button>
           <Button variant="ghost" size="icon-sm" title="Edit" onClick={()=>setEditing(invoice)}><Edit className="h-4 w-4"/></Button>
           {invoice.status!=='paid' && invoice.status!=='cancelled' && <Button variant="ghost" size="icon-sm" title="Record Payment" onClick={()=>setPaymentInvoice(invoice)}><CreditCard className="h-4 w-4"/></Button>}
-          {invoice.lineItems.some(i=>i.receivedQuantity<i.quantity) && invoice.status!=='cancelled' && <Button variant="ghost" size="icon-sm" title="Receive & Create Assets" onClick={()=>setReceiving(invoice)}><PackagePlus className="h-4 w-4"/></Button>}
           <Button variant="ghost" size="icon-sm" title="Delete" onClick={()=>deleteInvoice(invoice)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
         </div></TableCell>
       </TableRow>)}
     </TableBody></Table></CardContent></Card>
 
-    <Dialog open={showCreate || !!editing} onOpenChange={open=>{if(!open){setShowCreate(false);setEditing(null)}}}>
-      <DialogContent className="!w-[calc(100vw-32px)] !max-w-[1600px] !h-[calc(100vh-32px)] !max-h-[calc(100vh-32px)] p-0 gap-0 overflow-hidden rounded-lg">
-        <InvoiceForm invoice={editing} invoices={invoicesList} vendors={vendorsList} onVendorsChange={onVendorsChange} onSubmit={editing?updateInvoice:createInvoice} onCancel={()=>{setShowCreate(false);setEditing(null)}}/>
-      </DialogContent>
-    </Dialog>
-
     <Dialog open={!!viewing} onOpenChange={open=>!open&&setViewing(null)}><DialogContent className="!w-fit !min-w-[min(760px,calc(100vw-32px))] !max-w-[calc(100vw-32px)] !h-auto !max-h-[calc(100vh-32px)] p-0 gap-0 overflow-hidden rounded-lg">
-      {viewing&&<InvoiceDetails invoice={viewing} vendorName={vendorName(viewing.vendorId)} assetsList={assetsList} history={history} onClose={()=>setViewing(null)} onReceive={()=>{setViewing(null);setReceiving(viewing)}} onPayment={()=>{setViewing(null);setPaymentInvoice(viewing)}}/>}
-    </DialogContent></Dialog>
-
-    <Dialog open={!!receiving} onOpenChange={open=>!open&&setReceiving(null)}><DialogContent className="max-w-3xl">
-      <DialogHeader><DialogTitle>Receive Invoice Items & Create Assets</DialogTitle><DialogDescription>Each remaining unit will become an available asset in IT Asset Manager.</DialogDescription></DialogHeader>
-      {receiving&&<ReceiveItemsForm invoice={receiving} onCancel={()=>setReceiving(null)} onConfirm={(quantities)=>handleReceive(receiving, quantities)}/>}
+      {viewing&&<InvoiceDetails invoice={viewing} vendorName={vendorName(viewing.vendorId)} sitesList={sitesList} assetsList={assetsList} history={history} onClose={()=>setViewing(null)} onReceive={()=>{setViewing(null);alert('Create received assets from Assets → Add Batch. This preserves Site Series tags, serial numbers, and invoice-line limits.')}} onPayment={()=>{setViewing(null);setPaymentInvoice(viewing)}}/>}
     </DialogContent></Dialog>
 
     <Dialog open={!!paymentInvoice} onOpenChange={open=>!open&&setPaymentInvoice(null)}><DialogContent className="max-w-md">
@@ -210,108 +173,206 @@ export function InvoicesPage({
   </div>;
 }
 
-function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel}:{invoice:Invoice|null;invoices:Invoice[];vendors:Vendor[];onVendorsChange:(vendors:Vendor[])=>void;onSubmit:(data:Omit<Invoice,'id'|'createdAt'>)=>void;onCancel:()=>void}) {
+function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel,assetCategories,sitesList,defaultSiteId,canChooseLocation}:{invoice:Invoice|null;invoices:Invoice[];vendors:Vendor[];onVendorsChange:(vendors:Vendor[])=>void;onSubmit:(data:Omit<Invoice,'id'|'createdAt'>)=>void;onCancel:()=>void;assetCategories:AssetCategory[];sitesList:Location[];defaultSiteId:string;canChooseLocation:boolean}) {
+  const [currencyOptions]=useCollection<MasterDataOption>('currencies');
+  const [unitOptions]=useCollection<MasterDataOption>('units-of-measure');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
+  const activeCurrencies=currencyOptions.filter(option=>option.active&&option.name.trim());
   const [vendorId,setVendorId]=useState(invoice?.vendorId||vendors[0]?.id||'');
   const [invoiceNumber,setInvoiceNumber]=useState(invoice?.invoiceNumber||'');
   const [invoiceDate,setInvoiceDate]=useState(invoice?.invoiceDate||new Date().toISOString().split('T')[0]);
   const [dueDate,setDueDate]=useState(invoice?.dueDate||'');
-  const [currency,setCurrency]=useState(invoice?.currency||vendors[0]?.currency||CURRENCIES[0]);
+  const [currency,setCurrency]=useState(invoice?.currency||vendors[0]?.currency||activeCurrencies.find(option=>option.id===policy.defaultCurrency)?.name||activeCurrencies[0]?.name||policy.defaultCurrency);
   const [paymentTerms,setPaymentTerms]=useState(invoice?.paymentTerms||'');
   const [poNumber,setPoNumber]=useState(invoice?.poNumber||'');
-  const [status,setStatus]=useState<InvoiceStatus>(invoice?.status||'draft');
+  const [poDate,setPoDate]=useState(invoice?.poDate||'');
+  const [siteId,setSiteId]=useState(invoice?.siteId||defaultSiteId);
+  const [status,setStatus]=useState<InvoiceStatus>(invoice?.status||'open');
   const [notes,setNotes]=useState(invoice?.notes||'');
-  const [items,setItems]=useState<EditableInvoiceLineItem[]>(invoice?.lineItems||[emptyLine(),emptyLine()]);
-  const [selectedRows,setSelectedRows]=useState<string[]>([]);
+  const activeCategories=assetCategories.filter(category=>category.active&&category.name.trim());
+  const defaultCategory=activeCategories[0]?.id||'accessory';
+  const [items,setItems]=useState<EditableInvoiceLineItem[]>(invoice?.lineItems||[emptyLine(defaultCategory)]);
   const [showCreateVendor, setShowCreateVendor] = useState(false);
-  const [duplicateWarning, setDuplicateWarning] = useState('');
+  const [vendorOpen, setVendorOpen] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [attachmentName, setAttachmentName] = useState(invoice?.attachmentName || '');
+  const [attachmentType, setAttachmentType] = useState(invoice?.attachmentType || '');
+  const [attachmentDataUrl, setAttachmentDataUrl] = useState(invoice?.attachmentDataUrl || '');
+  const submitIntent = useRef<'draft'|'final'>('final');
   const subtotal=useMemo(()=>items.reduce((s,i)=>s+i.quantity*i.unitPrice,0),[items]);
   const taxTotal=useMemo(()=>items.reduce((s,i)=>s+i.quantity*i.unitPrice*i.taxRate/100,0),[items]);
   const total=subtotal+taxTotal;
-  const update=(id:string,patch:Partial<EditableInvoiceLineItem>)=>setItems(a=>a.map(i=>i.id===id?{...i,...patch}:i));
-  const toggleRow=(id:string)=>setSelectedRows(a=>a.includes(id)?a.filter(x=>x!==id):[...a,id]);
-  const removeSelected=()=>{setItems(a=>{const remaining=a.filter(i=>!selectedRows.includes(i.id));return remaining.length?remaining:[emptyLine()]});setSelectedRows([])};
+  const itemSuggestions=useMemo(()=>Array.from(new Set(invoices.flatMap(existing=>existing.lineItems.map(item=>item.description)).filter(Boolean))).sort(),[invoices]);
+  const normalizedInvoiceNumber=invoiceNumber.trim().toLowerCase();
+  const invoiceYear=invoiceDate ? new Date(`${invoiceDate}T00:00:00`).getFullYear() : undefined;
+  const matchingInvoices=useMemo(()=>normalizedInvoiceNumber ? invoices.filter(i=>i.id!==invoice?.id&&i.vendorId===vendorId&&i.invoiceNumber.trim().toLowerCase()===normalizedInvoiceNumber) : [],[invoice?.id,invoices,normalizedInvoiceNumber,vendorId]);
+  const sameYearDuplicate=useMemo(()=>matchingInvoices.find(i=>new Date(`${i.invoiceDate}T00:00:00`).getFullYear()===invoiceYear),[invoiceYear,matchingInvoices]);
+  const priorYearDuplicates=useMemo(()=>matchingInvoices.filter(i=>new Date(`${i.invoiceDate}T00:00:00`).getFullYear()!==invoiceYear),[invoiceYear,matchingInvoices]);
+  const duplicatePo=useMemo(()=>poNumber.trim()?invoices.find(i=>i.id!==invoice?.id&&i.poNumber?.trim().toLowerCase()===poNumber.trim().toLowerCase()):undefined,[invoice?.id,invoices,poNumber]);
+  const update=(id:string,patch:Partial<EditableInvoiceLineItem>)=>{setDirty(true);setItems(a=>a.map(i=>i.id===id?{...i,...patch}:i))};
+  const removeLine=(id:string)=>{setDirty(true);setItems(current=>{const remaining=current.filter(item=>item.id!==id);return remaining.length?remaining:[emptyLine(defaultCategory)]})};
   const input='h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-none focus:outline-none focus:ring-2 focus:ring-ring';
   const select='h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring';
 
-  const submit=(e:FormEvent)=>{e.preventDefault();
-    const normalizedNumber=invoiceNumber.trim().toLowerCase();
-    if(!vendorId||!invoiceNumber.trim()||items.some(i=>!i.description.trim()||i.quantity<1)){alert('Please select a vendor, enter an invoice number, and complete every line item.');return;}
-    const duplicate=invoices.find(i=>
-      i.id!==invoice?.id && i.vendorId===vendorId && i.invoiceNumber.trim().toLowerCase()===normalizedNumber
-    );
-    if(duplicate){setDuplicateWarning(`Invoice ${invoiceNumber.trim()} already exists for this vendor. Please check the invoice number before saving.`);return;}
-    setDuplicateWarning('');
-    onSubmit({vendorId,invoiceNumber:invoiceNumber.trim(),invoiceDate,dueDate:dueDate||undefined,currency,paymentTerms:paymentTerms.trim()||undefined,poNumber:poNumber.trim()||undefined,status,notes:notes.trim()||undefined,subtotal,taxTotal,total,amountPaid:invoice?.amountPaid||0,paymentDate:invoice?.paymentDate,paymentReference:invoice?.paymentReference,paymentMethod:invoice?.paymentMethod,lineItems:items});
+  const requestClose=()=>{if(!dirty||window.confirm('Discard unsaved invoice changes?'))onCancel()};
+  const applyPaymentTerms=(value:string)=>{
+    setPaymentTerms(value);
+    const match=value.match(/net\s*(\d+)/i);
+    if(match&&invoiceDate){const next=new Date(`${invoiceDate}T00:00:00`);next.setDate(next.getDate()+Number(match[1]));setDueDate(next.toISOString().slice(0,10));}
+  };
+  const attachFile=(file?:File)=>{
+    if(!file)return;
+    if(!['application/pdf','image/jpeg','image/png','image/webp'].includes(file.type)){setErrors(current=>({...current,attachment:'Use a PDF, JPG, PNG, or WebP file.'}));return;}
+    if(file.size>2*1024*1024){setErrors(current=>({...current,attachment:'Attachment must be 2 MB or smaller.'}));return;}
+    const reader=new FileReader();reader.onload=()=>{setAttachmentName(file.name);setAttachmentType(file.type);setAttachmentDataUrl(String(reader.result));setErrors(current=>({...current,attachment:''}));setDirty(true)};reader.readAsDataURL(file);
   };
 
-  return <form onSubmit={submit} className="flex h-full min-h-0 flex-col bg-background">
-    <div className="flex shrink-0 items-center justify-between border-b px-5 py-3">
-      <div className="flex items-center gap-3"><button type="button" onClick={onCancel} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"><ArrowLeft className="h-5 w-5"/></button>
-        <div><h2 className="text-xl font-bold">{invoice?'Edit Vendor Invoice':'Add Vendor Invoice'}</h2><p className="text-xs text-muted-foreground">Enter the invoice details and line items. Received asset items can be created from this invoice.</p></div>
-      </div><button type="button" onClick={onCancel} className="inline-flex h-9 w-9 items-center justify-center rounded-md border text-muted-foreground hover:bg-muted"><X className="h-5 w-5"/></button>
+  const submit=(e:FormEvent)=>{e.preventDefault();
+    const intent=submitIntent.current;
+    const nextErrors:Record<string,string>={};
+    if(!vendorId)nextErrors.vendor='Select a vendor.';
+    if(canChooseLocation&&!siteId)nextErrors.location='Select the site for this invoice.';
+    if(!invoiceNumber.trim())nextErrors.invoiceNumber='Invoice number is required.';
+    if(!invoiceDate)nextErrors.invoiceDate='Invoice date is required to check the invoice year.';
+    if(intent==='final'&&items.some(i=>!i.description.trim()||i.quantity<1))nextErrors.items='Every line needs an item description and quantity of at least 1.';
+    if(sameYearDuplicate)nextErrors.invoiceNumber=sameYearDuplicate.status==='draft'
+      ? `A draft with this invoice number already exists for ${invoiceYear}. Continue from ${sameYearDuplicate.invoiceNumber} instead.`
+      : `Invoice ${sameYearDuplicate.invoiceNumber} already exists for ${invoiceYear}.`;
+    if(duplicatePo)nextErrors.poNumber=`PO number is already used on invoice ${duplicatePo.invoiceNumber}.`;
+    setErrors(nextErrors);
+    if(Object.keys(nextErrors).length)return;
+    if(priorYearDuplicates.length){
+      const years=Array.from(new Set(priorYearDuplicates.map(existing=>new Date(`${existing.invoiceDate}T00:00:00`).getFullYear()))).sort().join(', ');
+      if(!window.confirm(`Invoice number ${invoiceNumber.trim()} was previously used by this vendor in ${years}. The current invoice date is in ${invoiceYear}. Continue?`))return;
+    }
+    setDirty(false);
+    onSubmit({vendorId,siteId:siteId||undefined,invoiceNumber:invoiceNumber.trim(),invoiceDate,dueDate:dueDate||undefined,currency,paymentTerms:paymentTerms.trim()||undefined,poNumber:poNumber.trim()||undefined,poDate:poDate||undefined,status:intent==='draft'?'draft':(status==='draft'?'open':status),notes:notes.trim()||undefined,attachmentName:attachmentName||undefined,attachmentType:attachmentType||undefined,attachmentDataUrl:attachmentDataUrl||undefined,subtotal,taxTotal,total,amountPaid:invoice?.amountPaid||0,paymentDate:invoice?.paymentDate,paymentReference:invoice?.paymentReference,paymentMethod:invoice?.paymentMethod,lineItems:items});
+  };
+
+  return <form onSubmit={submit} onChange={()=>setDirty(true)} className="min-h-full w-full min-w-0 bg-background">
+    <div className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
+      <div className="flex min-w-0 items-center gap-3">
+        <Button type="button" variant="ghost" size="icon" onClick={requestClose} aria-label="Back to invoices"><ArrowLeft className="h-5 w-5"/></Button>
+        <div className="min-w-0"><h2 className="truncate text-xl font-semibold tracking-tight">{invoice?'Edit Vendor Invoice':'Add Vendor Invoice'}</h2><p className="hidden text-xs text-muted-foreground sm:block">Enter invoice details and line items. Received hardware can be created as assets.</p></div>
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <Button type="button" variant="outline" className="hidden sm:inline-flex" onClick={requestClose}>Cancel</Button>
+        {(!invoice||invoice.status==='draft')&&<Button type="submit" variant="outline" className="hidden sm:inline-flex" formNoValidate onClick={()=>{submitIntent.current='draft'}}>Save Draft</Button>}
+        <Button type="submit" className="hidden sm:inline-flex" onClick={()=>{submitIntent.current='final'}}>{invoice?'Update Invoice':'Create Invoice'}</Button>
+      </div>
     </div>
 
-    <div className="shrink-0 border-b bg-muted/10 px-5 py-3">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Field label="Vendor *"><select value={vendorId} onChange={e=>{if(e.target.value==='__create_vendor__'){setShowCreateVendor(true);return;}setVendorId(e.target.value);const v=vendors.find(x=>x.id===e.target.value);if(v?.currency)setCurrency(v.currency)}} className={select}>
-          {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
-          <option value="__create_vendor__">＋ Create New Vendor</option>
-        </select></Field>
-        <Field label="Invoice Number *"><Input required className={input} value={invoiceNumber} onChange={e=>setInvoiceNumber(e.target.value)} placeholder="INV-2026-001"/></Field>
-        <Field label="Invoice Date *"><div className="relative"><Input type="date" required className={`${input} pr-9`} value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)}/><CalendarDays className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/></div></Field>
+    <div className="mx-auto my-5 w-[calc(100%-2rem)] max-w-[1440px] rounded-lg border bg-card px-4 shadow-sm sm:w-[calc(100%-3rem)] sm:px-6 lg:px-8">
+
+    <section className="border-b py-6">
+      <div className="mb-5"><h3 className="text-base font-semibold">Invoice details</h3><p className="text-xs text-muted-foreground">Vendor, document reference and payment information.</p></div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Field label="Vendor *" error={errors.vendor}>
+          <Popover open={vendorOpen} onOpenChange={setVendorOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" role="combobox" aria-expanded={vendorOpen} className="h-9 w-full justify-between px-2.5 font-normal">
+                <span className="truncate">{vendors.find(v=>v.id===vendorId)?.name || 'Search vendor...'}</span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+              <Command>
+                <CommandInput placeholder="Type vendor name..." />
+                <CommandList>
+                  <CommandEmpty>No existing vendor found.</CommandEmpty>
+                  <CommandGroup heading="Existing vendors">
+                    {vendors.map(v=><CommandItem key={v.id} value={`${v.name} ${v.contactPerson || ''}`} onSelect={()=>{setVendorId(v.id);if(v.currency)setCurrency(v.currency);setDirty(true);setVendorOpen(false)}}>
+                      <Check className={`h-4 w-4 ${vendorId===v.id?'opacity-100':'opacity-0'}`} />
+                      <div className="min-w-0"><p className="truncate">{v.name}</p>{v.contactPerson&&<p className="truncate text-xs text-muted-foreground">{v.contactPerson}</p>}</div>
+                    </CommandItem>)}
+                  </CommandGroup>
+                  <CommandGroup>
+                    <CommandItem value="create new vendor" onSelect={()=>{setVendorOpen(false);setShowCreateVendor(true)}}>
+                      <Plus className="h-4 w-4" /> Create new vendor
+                    </CommandItem>
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </Field>
+        <Field label="Invoice Number *" error={errors.invoiceNumber}><Input required aria-invalid={!!errors.invoiceNumber||!!sameYearDuplicate} className={input} value={invoiceNumber} onChange={e=>setInvoiceNumber(e.target.value)} placeholder="INV-2026-001"/></Field>
+        <Field label="Invoice Date *" error={errors.invoiceDate}><div className="relative"><Input type="date" required className={`${input} pr-9`} value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)}/><CalendarDays className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/></div></Field>
         <Field label="Due Date"><div className="relative"><Input type="date" className={`${input} pr-9`} value={dueDate} onChange={e=>setDueDate(e.target.value)}/><CalendarDays className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/></div></Field>
-        <Field label="Currency"><select value={currency} onChange={e=>setCurrency(e.target.value)} className={select}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></Field>
+        <Field label="Currency"><select value={currency} onChange={e=>setCurrency(e.target.value)} className={select}>{activeCurrencies.map(option=><option key={option.id} value={option.name}>{option.name}</option>)}</select></Field>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Field label="Payment Terms"><Input className={input} value={paymentTerms} onChange={e=>setPaymentTerms(e.target.value)} placeholder="Net 30"/></Field>
-        <Field label="PO Number"><Input className={input} value={poNumber} onChange={e=>setPoNumber(e.target.value)} placeholder="PO-2026-001"/></Field>
-        <Field label="Status"><select value={status} onChange={e=>setStatus(e.target.value as InvoiceStatus)} className={select}>{Object.keys(STATUS_STYLES).map(s=><option key={s} value={s}>{s.replace('-',' ')}</option>)}</select></Field>
-        <div className="xl:col-span-2"><Field label="Notes"><Input className={input} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Invoice notes..."/></Field></div>
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Field label="Payment Terms"><Input className={input} value={paymentTerms} onChange={e=>applyPaymentTerms(e.target.value)} placeholder="Net 30"/></Field>
+        <Field label="PO Number" error={errors.poNumber || (duplicatePo?`Already used on invoice ${duplicatePo.invoiceNumber}.`:'')}><Input aria-invalid={!!errors.poNumber||!!duplicatePo} className={input} value={poNumber} onChange={e=>setPoNumber(e.target.value)} placeholder="PO-2026-001"/></Field>
+        <Field label="PO Date"><div className="relative"><Input type="date" className={`${input} pr-9`} value={poDate} onChange={e=>setPoDate(e.target.value)}/><CalendarDays className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/></div></Field>
+        <Field label="Status"><select value={status} onChange={e=>setStatus(e.target.value as InvoiceStatus)} className={select}>{Object.keys(STATUS_STYLES).map(s=><option key={s} value={s}>{s.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>)}</select></Field>
+        <Field label="Notes"><Input className={input} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Invoice notes..."/></Field>
       </div>
-    </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 border-t pt-4">
+        {canChooseLocation&&<label className="inline-flex items-center gap-2 text-xs font-medium">Invoice site<select required aria-invalid={!!errors.location} value={siteId} onChange={event=>setSiteId(event.target.value)} className={`h-8 min-w-44 rounded-md border bg-background px-2 text-xs ${errors.location?'border-destructive':''}`}><option value="">Select site</option>{sitesList.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select>{errors.location&&<span className="text-xs text-destructive">{errors.location}</span>}</label>}
+        <span className="text-xs font-medium">Original invoice</span>
+        <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-xs font-medium hover:bg-muted">
+          <Paperclip className="h-3.5 w-3.5" /> {attachmentName ? 'Replace attachment' : 'Attach PDF or image'}
+          <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="sr-only" onChange={event=>attachFile(event.target.files?.[0])}/>
+        </label>
+        {attachmentName&&<><span className="max-w-[280px] truncate text-xs text-muted-foreground">{attachmentName}</span><Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={()=>{setAttachmentName('');setAttachmentType('');setAttachmentDataUrl('');setDirty(true)}}>Remove</Button></>}
+        {errors.attachment&&<span className="text-xs text-destructive">{errors.attachment}</span>}
+        <span className="text-[11px] text-muted-foreground sm:ml-auto">PDF, JPG, PNG or WebP · maximum 2 MB</span>
+      </div>
+    </section>
 
-    {duplicateWarning && (
-      <div className="mx-5 mt-3 flex shrink-0 items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+    {sameYearDuplicate && (
+      <div className="mt-4 flex shrink-0 items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <div className="flex-1">{duplicateWarning}</div>
+        <div className="flex-1"><span className="font-medium">{sameYearDuplicate.status==='draft'?'Existing draft found.':'Possible duplicate invoice.'}</span> Invoice {sameYearDuplicate.invoiceNumber} already exists for this vendor in {invoiceYear}. {sameYearDuplicate.status==='draft'?'Return to the invoice list and continue editing that draft.':'Review the existing invoice before creating another.'}</div>
       </div>
     )}
-
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-3">
-      <div className="mb-3 flex shrink-0 items-center justify-between"><div><h3 className="text-lg font-semibold">Invoice Items</h3><p className="text-xs text-muted-foreground">For IT hardware, choose the asset type so received items can be created automatically.</p></div>
-        <div className="flex gap-2"><Button type="button" variant="outline" size="sm" className="border-primary text-primary" onClick={()=>setItems(a=>[...a,emptyLine()])}><Plus className="mr-1.5 h-4 w-4"/>Add Row</Button>
-        <Button type="button" variant="outline" size="sm" disabled={!selectedRows.length} onClick={removeSelected}><Trash2 className="mr-1.5 h-4 w-4"/>Remove Selected</Button></div>
+    {!sameYearDuplicate&&priorYearDuplicates.length>0&&(
+      <div className="mt-4 flex shrink-0 items-start gap-2 rounded-md border border-chart-5/30 bg-chart-5/5 px-3 py-2.5 text-sm text-foreground">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-chart-5" />
+        <div className="flex-1"><span className="font-medium">Invoice number used in a previous year.</span> This vendor used {invoiceNumber.trim()} in {Array.from(new Set(priorYearDuplicates.map(existing=>new Date(`${existing.invoiceDate}T00:00:00`).getFullYear()))).sort().join(', ')}. The current date is in {invoiceYear}; you will be asked to confirm before saving.</div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background">
-        <table className="w-full min-w-[1280px] border-collapse text-sm">
-          <thead className="sticky top-0 z-10 bg-muted/90"><tr className="border-b">
-            {['#','ITEM','DESCRIPTION','ASSET TYPE','MANUFACTURER','MODEL','QTY','UNIT','PRICE/UNIT','TAX %','AMOUNT'].map((h,i)=><th key={i} className={`border-r px-3 py-2 text-left font-medium text-muted-foreground ${i===0?'w-12':i===1?'min-w-[210px]':i===2?'min-w-[220px]':i===3?'min-w-[145px]':i===4?'min-w-[155px]':i===5?'min-w-[165px]':i===6?'w-20':i===7?'w-28':i===8?'w-36':i===9?'w-24':'min-w-[145px]'}`}>{h}</th>)}<th className="w-14 border-l px-2 py-2 text-center"><input type="checkbox" checked={items.length>0&&selectedRows.length===items.length} onChange={e=>setSelectedRows(e.target.checked?items.map(i=>i.id):[])} className="h-4 w-4 rounded border-input accent-primary" aria-label="Select all rows"/></th>
-          </tr></thead>
-          <tbody>{items.map((item,index)=>{const amount=item.quantity*item.unitPrice*(1+item.taxRate/100);return <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
-            <td className="border-r px-3 py-2 text-muted-foreground">{index+1}</td>
-            <td className="border-r p-1.5"><Input required className={input} value={item.description} onChange={e=>update(item.id,{description:e.target.value})} placeholder="Dell Latitude 5420"/></td>
-            <td className="border-r p-1.5"><Input className={input} value={item.itemDescription||''} onChange={e=>update(item.id,{itemDescription:e.target.value})} placeholder="Business Laptop"/></td>
-            <td className="border-r p-1.5"><select value={item.assetType||'accessory'} onChange={e=>update(item.id,{assetType:e.target.value as AssetType})} className={select}>{ASSET_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></td>
-            <td className="border-r p-1.5"><Input className={input} value={item.manufacturer||''} onChange={e=>update(item.id,{manufacturer:e.target.value})} placeholder="Dell"/></td>
-            <td className="border-r p-1.5"><Input className={input} value={item.model||''} onChange={e=>update(item.id,{model:e.target.value})} placeholder="Latitude 5420"/></td>
-            <td className="border-r p-1.5"><Input type="number" min="1" className={`${input} text-right`} value={item.quantity} onChange={e=>update(item.id,{quantity:Math.max(1,Number(e.target.value)||1)})}/></td>
-            <td className="border-r p-1.5"><select defaultValue="Pcs" className={select}><option>Pcs</option><option>Nos</option><option>Unit</option><option>Set</option><option>Box</option><option>Pack</option></select></td>
-            <td className="border-r p-1.5"><Input type="number" min="0" step="0.01" className={`${input} text-right`} value={item.unitPrice} onChange={e=>update(item.id,{unitPrice:Number(e.target.value)||0})}/></td>
-            <td className="border-r p-1.5"><Input type="number" min="0" step="0.01" className={`${input} text-right`} value={item.taxRate} onChange={e=>update(item.id,{taxRate:Number(e.target.value)||0})}/></td>
-            <td className="px-3 py-2 text-right font-medium tabular-nums">{money(amount,currency)}</td>
-            <td className="border-l px-2 py-2 text-center"><input type="checkbox" checked={selectedRows.includes(item.id)} onChange={()=>toggleRow(item.id)} className="h-4 w-4 rounded border-input accent-primary" aria-label={`Select row ${index+1}`}/></td>
-          </tr>})}</tbody>
-          <tfoot className="bg-muted/20"><tr><td colSpan={6} className="px-3 py-3 text-right font-semibold">TOTAL</td><td className="px-3 py-3 text-right font-medium">{items.reduce((s,i)=>s+i.quantity,0)}</td><td colSpan={3}/><td className="px-3 py-3 text-right font-semibold">{money(total,currency)}</td><td/></tr></tfoot>
-        </table>
-      </div>
-    </div>
+    )}
+    {errors.items&&<div className="mt-4 flex shrink-0 items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"><AlertTriangle className="h-4 w-4"/>{errors.items}</div>}
 
-    <div className="shrink-0 border-t px-5 py-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <section className="py-6">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><h3 className="text-base font-semibold">Invoice items</h3><p className="text-xs text-muted-foreground">Enter what was purchased, then add its asset and pricing information.</p></div>
+        <Button type="button" variant="outline" size="sm" className="border-primary text-primary" onClick={()=>{setDirty(true);setItems(a=>[...a,emptyLine(defaultCategory)])}}><Plus className="mr-1.5 h-4 w-4"/>Add line item</Button>
+      </div>
+      <div className="mt-5 hidden grid-cols-[36px_minmax(0,2fr)_minmax(0,1.6fr)_minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,1fr)_64px_72px_96px_64px_104px_36px] gap-2 border-y bg-muted/40 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
+        <span className="text-center">#</span><span>Item</span><span>Description</span><span>Category</span><span>Manufacturer</span><span>Model</span><span className="text-right">Qty</span><span>Unit</span><span className="text-right">Unit price</span><span className="text-right">Tax %</span><span className="text-right">Amount</span><span className="sr-only">Actions</span>
+      </div>
+      <div>
+        {items.map((item,index)=>{const amount=item.quantity*item.unitPrice*(1+item.taxRate/100);return <div key={item.id} className="border-b py-5 last:border-b-0 xl:py-2.5">
+          <div className="mb-4 flex items-start justify-between gap-4 xl:hidden"><div className="flex min-w-0 items-center gap-3"><span className="flex h-7 min-w-7 items-center justify-center rounded bg-muted px-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{index+1}</span><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.description || `New line item`}</p><p className="text-xs text-muted-foreground">Product, asset and pricing information</p></div></div><div className="flex shrink-0 items-center gap-3"><div className="text-right"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</p><p className="text-sm font-semibold tabular-nums">{money(amount,currency)}</p></div><Button type="button" variant="ghost" size="icon-sm" onClick={()=>removeLine(item.id)} aria-label={`Remove line item ${index+1}`}><Trash2 className="h-4 w-4 text-destructive"/></Button></div></div>
+          <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 xl:grid-cols-[36px_minmax(0,2fr)_minmax(0,1.6fr)_minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,1fr)_64px_72px_96px_64px_104px_36px] xl:items-start xl:gap-2 xl:px-2 xl:[&>div]:space-y-0">
+            <div className="hidden h-9 items-center justify-center text-xs font-medium tabular-nums text-muted-foreground xl:flex">{index+1}</div>
+            <Field label="Item name *" labelClassName="xl:sr-only"><Input required list="invoice-item-suggestions" className={input} value={item.description} onChange={e=>update(item.id,{description:e.target.value})} placeholder="Item name"/></Field>
+            <Field label="Item description" labelClassName="xl:sr-only"><Input className={input} value={item.itemDescription||''} onChange={e=>update(item.id,{itemDescription:e.target.value})} placeholder="Description"/></Field>
+            <Field label="Asset category" labelClassName="xl:sr-only"><select value={item.assetType||defaultCategory} onChange={e=>update(item.id,{assetType:e.target.value as AssetType})} className={select}>{!activeCategories.some(category=>category.id===item.assetType)&&item.assetType&&<option value={item.assetType}>{assetCategories.find(category=>category.id===item.assetType)?.name||item.assetType}</option>}{activeCategories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></Field>
+            <Field label="Manufacturer" labelClassName="xl:sr-only"><Input className={input} value={item.manufacturer||''} onChange={e=>update(item.id,{manufacturer:e.target.value})} placeholder="Manufacturer"/></Field>
+            <Field label="Model" labelClassName="xl:sr-only"><Input className={input} value={item.model||''} onChange={e=>update(item.id,{model:e.target.value})} placeholder="Model"/></Field>
+            <Field label="Quantity" labelClassName="xl:sr-only"><Input type="number" min="1" className={`${input} text-right`} value={item.quantity} onChange={e=>update(item.id,{quantity:Math.max(1,Number(e.target.value)||1)})}/></Field>
+            <Field label="Purchase unit" labelClassName="xl:sr-only"><select value={item.unit||unitOptions.find(option=>option.active)?.name||''} onChange={event=>update(item.id,{unit:event.target.value})} className={select}>{unitOptions.filter(option=>option.active&&option.name.trim()).map(option=><option key={option.id} value={option.name}>{option.name}</option>)}</select></Field>
+            <Field label="Unit price" labelClassName="xl:sr-only"><Input type="number" min="0" step="0.01" className={`${input} text-right`} value={item.unitPrice} onChange={e=>update(item.id,{unitPrice:Number(e.target.value)||0})}/></Field>
+            <Field label="Tax rate %" labelClassName="xl:sr-only"><Input type="number" min="0" step="0.01" className={`${input} text-right`} value={item.taxRate} onChange={e=>update(item.id,{taxRate:Number(e.target.value)||0})}/></Field>
+            <div className="hidden h-9 items-center justify-end text-sm font-semibold tabular-nums xl:flex">{money(amount,currency)}</div>
+            <Button type="button" variant="ghost" size="icon-sm" className="hidden xl:inline-flex" onClick={()=>removeLine(item.id)} aria-label={`Remove line item ${index+1}`}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+          </div>
+        </div>})}
+      </div>
+      <datalist id="invoice-item-suggestions">{itemSuggestions.map(item=><option key={item} value={item}/>)}</datalist>
+    </section>
+
+    <section className="sticky bottom-0 z-20 -mx-4 min-w-0 border-t bg-background/95 px-4 py-4 shadow-[0_-8px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"><div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="text-xs text-muted-foreground flex items-center gap-2"><Rows3 className="h-4 w-4"/>{items.length} line item{items.length===1?'':'s'} • {items.reduce((s,i)=>s+i.quantity,0)} total units</div>
-      <div className="flex items-end gap-6"><div className="min-w-[280px] rounded-md border bg-muted/20 px-4 py-3">
-        <div className="flex justify-between text-sm"><span>Subtotal</span><span>{money(subtotal,currency)}</span></div><div className="mt-1.5 flex justify-between text-sm"><span>Tax</span><span>{money(taxTotal,currency)}</span></div><div className="mt-2 border-t pt-2 flex justify-between text-base font-bold"><span>Total</span><span>{money(total,currency)}</span></div>
-      </div><div className="flex gap-2"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit" className="min-w-[150px]">{invoice?'Update Invoice':'Create Invoice'}</Button></div></div>
+      <div className="flex min-w-0 flex-wrap items-end justify-end gap-3"><div className="w-[280px] max-w-full px-1 py-1">
+        <div className="flex justify-between text-sm"><span>Taxable value</span><span>{money(subtotal,currency)}</span></div><div className="mt-1.5 flex justify-between text-sm"><span>Tax amount</span><span>{money(taxTotal,currency)}</span></div><div className="mt-2 border-t pt-2 flex justify-between text-base font-bold"><span>Total including tax</span><span>{money(total,currency)}</span></div>
+      </div><div className="flex shrink-0 gap-2 sm:hidden">{(!invoice||invoice.status==='draft')&&<Button type="submit" variant="outline" formNoValidate onClick={()=>{submitIntent.current='draft'}}>Save Draft</Button>}<Button type="submit" onClick={()=>{submitIntent.current='final'}}>{invoice?'Update':'Create'}</Button></div></div>
     </div>
+    </section>
     </div>
 
     <Dialog open={showCreateVendor} onOpenChange={setShowCreateVendor}>
@@ -327,6 +388,7 @@ function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel
           onCreate={(vendor) => {
             onVendorsChange([...vendors, vendor]);
             setVendorId(vendor.id);
+            setDirty(true);
             if (vendor.currency) setCurrency(vendor.currency);
             setShowCreateVendor(false);
           }}
@@ -347,15 +409,17 @@ function QuickVendorForm({
   onCreate: (vendor: Vendor) => void;
   nextId: number;
 }) {
+  const [currencyOptions]=useCollection<MasterDataOption>('currencies');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [name, setName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [website, setWebsite] = useState('');
-  const [category, setCategory] = useState('Hardware');
   const [address, setAddress] = useState('');
   const [taxId, setTaxId] = useState('');
-  const [currency, setCurrency] = useState('INR - Indian Rupee');
+  const [currency, setCurrency] = useState(currencyOptions.find(option=>option.id===policy.defaultCurrency)?.name||currencyOptions.find(option=>option.active)?.name||policy.defaultCurrency);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -373,7 +437,6 @@ function QuickVendorForm({
       phone: phone.trim(),
       email: email.trim(),
       website: website.trim(),
-      category,
       address: address.trim(),
       taxId: taxId.trim(),
       currency
@@ -401,17 +464,12 @@ function QuickVendorForm({
         <Field label="Website">
           <Input className={input} value={website} onChange={e=>setWebsite(e.target.value)} placeholder="https://..." />
         </Field>
-        <Field label="Category">
-          <select className={select} value={category} onChange={e=>setCategory(e.target.value)}>
-            {['Hardware','Software','Services','Cloud','Telecom','Consulting','Other'].map(c=><option key={c}>{c}</option>)}
-          </select>
-        </Field>
         <Field label="Tax ID / GSTIN">
           <Input className={input} value={taxId} onChange={e=>setTaxId(e.target.value)} placeholder="GSTIN / Tax ID" />
         </Field>
         <Field label="Currency">
           <select className={select} value={currency} onChange={e=>setCurrency(e.target.value)}>
-            {CURRENCIES.map(c=><option key={c}>{c}</option>)}
+            {currencyOptions.filter(option=>option.active&&option.name.trim()).map(option=><option key={option.id} value={option.name}>{option.name}</option>)}
           </select>
         </Field>
         <div className="sm:col-span-2">
@@ -432,6 +490,7 @@ function QuickVendorForm({
 function InvoiceDetails({
   invoice,
   vendorName,
+  sitesList,
   assetsList,
   history,
   onClose,
@@ -440,6 +499,7 @@ function InvoiceDetails({
 }: {
   invoice: Invoice;
   vendorName: string;
+  sitesList: Location[];
   assetsList: Asset[];
   history: AssetHistoryEvent[];
   onClose: () => void;
@@ -490,12 +550,14 @@ function InvoiceDetails({
           </div>
           <div className="grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <Info label="Vendor" value={vendorName} />
+            <Info label="Invoice Site" value={sitesList.find(location=>location.id===invoice.siteId)?.name || '—'} />
             <Info label="Invoice Number" value={invoice.invoiceNumber} />
             <Info label="Invoice Date" value={formatDate(invoice.invoiceDate)} />
             <Info label="Due Date" value={invoice.dueDate ? formatDate(invoice.dueDate) : '—'} />
             <Info label="Currency" value={invoice.currency} />
             <Info label="Payment Terms" value={invoice.paymentTerms || '—'} />
             <Info label="PO Number" value={invoice.poNumber || '—'} />
+            <Info label="PO Date" value={invoice.poDate ? formatDate(invoice.poDate) : '—'} />
             <Info label="Created" value={formatDate(invoice.createdAt)} />
           </div>
         </div>
@@ -592,7 +654,7 @@ function InvoiceDetails({
                     <TableHead>Type</TableHead>
                     <TableHead>Manufacturer / Model</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Location</TableHead>
+                    <TableHead>Site</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -603,7 +665,7 @@ function InvoiceDetails({
                       <TableCell className="capitalize">{asset.type}</TableCell>
                       <TableCell>{[asset.manufacturer, asset.model].filter(Boolean).join(' · ') || '—'}</TableCell>
                       <TableCell><Badge variant="outline">{asset.status.replace('-', ' ')}</Badge></TableCell>
-                      <TableCell>{asset.location || '—'}</TableCell>
+                      <TableCell>{asset.siteId || '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -661,6 +723,13 @@ function InvoiceDetails({
           )}
         </div>
 
+        {invoice.attachmentDataUrl && invoice.attachmentName && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+            <div className="min-w-0"><p className="text-sm font-medium">Original invoice attachment</p><p className="truncate text-xs text-muted-foreground">{invoice.attachmentName}</p></div>
+            <Button asChild size="sm" variant="outline"><a href={invoice.attachmentDataUrl} download={invoice.attachmentName}><Download className="h-4 w-4"/>Download</a></Button>
+          </div>
+        )}
+
         {invoice.notes && (
           <div className="rounded-md bg-muted/50 p-3 text-sm">
             <p className="mb-1 font-medium">Notes</p>
@@ -689,11 +758,58 @@ function InvoiceDetails({
   );
 }
 
-function Field({label,children}:{label:string;children:ReactNode}) {
+const PAYMENT_METHODS = ['Bank Transfer', 'UPI', 'Cheque', 'Cash', 'Credit/Debit Card', 'Other'];
+
+function PaymentForm({invoice,onSubmit,onCancel}:{invoice:Invoice;onSubmit:(data:{amount:number;date:string;reference:string;method:string})=>void;onCancel:()=>void}) {
+  const outstanding = Math.max(0, Math.round((invoice.total - invoice.amountPaid) * 100) / 100);
+  const [amount,setAmount]=useState(String(outstanding));
+  const [date,setDate]=useState(new Date().toISOString().split('T')[0]);
+  const [method,setMethod]=useState(invoice.paymentMethod && PAYMENT_METHODS.includes(invoice.paymentMethod) ? invoice.paymentMethod : PAYMENT_METHODS[0]);
+  const [reference,setReference]=useState('');
+  const value=Number(amount);
+  const error = !amount || !Number.isFinite(value) || value<=0
+    ? 'Enter an amount greater than zero.'
+    : value>outstanding ? `Cannot exceed the outstanding balance of ${money(outstanding,invoice.currency)}.` : '';
+  const select='h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
+
+  const submit=(e:FormEvent)=>{
+    e.preventDefault();
+    if (error) return;
+    onSubmit({amount:Math.round(value*100)/100,date,reference:reference.trim(),method});
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <Summary label="Invoice total" value={money(invoice.total,invoice.currency)} />
+        <Summary label="Paid so far" value={money(invoice.amountPaid,invoice.currency)} />
+        <Summary label="Outstanding" value={money(outstanding,invoice.currency)} />
+      </div>
+      <Field label="Amount *" error={error}>
+        <div className="flex gap-2">
+          <Input type="number" min="0" step="0.01" max={outstanding} value={amount} onChange={e=>setAmount(e.target.value)} autoFocus required />
+          <Button type="button" variant="outline" onClick={()=>setAmount(String(outstanding))}>Full</Button>
+        </div>
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Payment date *"><Input type="date" value={date} max={new Date().toISOString().split('T')[0]} onChange={e=>setDate(e.target.value)} required /></Field>
+        <Field label="Method"><select className={select} value={method} onChange={e=>setMethod(e.target.value)}>{PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}</select></Field>
+      </div>
+      <Field label="Reference (UTR / cheque no. / transaction id)"><Input value={reference} onChange={e=>setReference(e.target.value)} placeholder="Optional" /></Field>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={!!error}>Record payment</Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function Field({label,children,error,labelClassName=''}:{label:string;children:ReactNode;error?:string;labelClassName?:string}) {
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium">{label}</label>
+      <label className={`text-sm font-medium ${labelClassName}`}>{label}</label>
       {children}
+      {error&&<p className="text-[11px] leading-4 text-destructive">{error}</p>}
     </div>
   );
 }

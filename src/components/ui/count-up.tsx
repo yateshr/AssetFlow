@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 /** Animates a number from 0 to `value` with an ease-out curve. Respects reduced-motion. */
-export function CountUp({ value, duration = 900 }: { value: number; duration?: number }) {
+export function CountUp({ value, duration = 320 }: { value: number; duration?: number }) {
   const [display, setDisplay] = useState(0)
   const frame = useRef<number>(0)
   const from = useRef(0)

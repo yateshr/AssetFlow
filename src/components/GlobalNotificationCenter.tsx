@@ -1,10 +1,11 @@
-import { kv } from '@/lib/db';
-import { useEffect, useMemo, useState } from 'react';
+import { kv, useCollection } from '@/lib/db';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bell, BellRing, CheckCircle2, Package, Wrench, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { Asset } from '@/data/models';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import type { Asset, Invoice, ItCallLog } from '@/data/models';
+import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
 type Notice = {
   id: string;
@@ -16,14 +17,19 @@ type Notice = {
 
 interface Props {
   assets: Asset[];
+  invoices: Invoice[];
+  callLogs: ItCallLog[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCountChange?: (count: number) => void;
+  trigger: ReactNode;
 }
 
 const readKey = 'assetflow-notifications-read';
 
-export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountChange }: Props) {
+export function GlobalNotificationCenter({ assets, invoices, callLogs, open, onOpenChange, onCountChange, trigger }: Props) {
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [read, setRead] = useState<Record<string, boolean>>({});
 
   const loadRead = () => {
@@ -47,7 +53,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
       const expiry = new Date(asset.warrantyExpiry).getTime();
       if (Number.isFinite(expiry)) {
         const days = Math.ceil((expiry - now) / 86400000);
-        if (days <= 90) {
+        if (days <= policy.warrantyAlertDays) {
           result.push({
             id: `warranty-${asset.id}`,
             title: days < 0 ? 'Warranty expired' : 'Warranty expiring soon',
@@ -58,6 +64,8 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
         }
       }
     });
+    invoices.forEach(invoice=>{const due=new Date(invoice.dueDate||'').getTime();const outstanding=invoice.total-invoice.amountPaid;if(Number.isFinite(due)&&due<now&&outstanding>0&&!['paid','cancelled'].includes(invoice.status))result.push({id:`invoice-${invoice.id}`,title:'Invoice payment overdue',detail:`${invoice.invoiceNumber} • outstanding ${outstanding.toFixed(2)}`,severity:'warning',createdAt:invoice.dueDate||invoice.invoiceDate});});
+    callLogs.filter(call=>call.priority==='critical'&&['open','in-progress'].includes(call.status)).forEach(call=>result.push({id:`call-${call.id}`,title:'Critical IT call open',detail:`${call.callerName} • ${call.issue}`,severity:'critical',createdAt:call.date}));
 
     try {
       const stock = JSON.parse(kv.getItem('assetflow-stock') || '[]');
@@ -121,7 +129,7 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
     } catch {}
 
     return result;
-  }, [assets, read, open]);
+  }, [assets, invoices, callLogs, read, open, policy.warrantyAlertDays]);
 
   const unread = notifications.filter(n => !read[n.id]).length;
 
@@ -143,45 +151,47 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(92vw,720px)] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BellRing className="h-5 w-5" /> Smart Notification Center
-          </DialogTitle>
-          <DialogDescription>
-            Alerts are available here from every AssetFlow page.
-          </DialogDescription>
-        </DialogHeader>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent align="end" sideOffset={8} className="w-[min(340px,calc(100vw-1rem))] overflow-hidden p-0 shadow-xl">
+        <div className="border-b px-3.5 py-2.5">
+          <div className="flex items-center gap-1.5 text-[13px] font-semibold">
+            <BellRing className="h-4 w-4" /> Notifications
+            {unread > 0 && <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">{unread} unread</Badge>}
+          </div>
+          <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+            Warranty, invoice, IT call, maintenance, stock, and infrastructure alerts.
+          </p>
+        </div>
 
-        <div className="space-y-2">
+        <div className="max-h-[min(400px,65vh)] space-y-0.5 overflow-y-auto p-1.5">
           {notifications.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center">
-              <CheckCircle2 className="mx-auto h-8 w-8 mb-2 text-muted-foreground" />
-              <p className="font-medium">You're all caught up</p>
-              <p className="text-sm text-muted-foreground">There are no active notifications.</p>
+            <div className="p-6 text-center">
+              <CheckCircle2 className="mx-auto mb-1.5 h-6 w-6 text-muted-foreground" />
+              <p className="text-[13px] font-medium">You're all caught up</p>
+              <p className="text-[11px] text-muted-foreground">There are no active notifications.</p>
             </div>
           ) : (
             notifications.map(n => (
-              <div key={n.id} className={`flex gap-3 p-3 border rounded-lg ${read[n.id] ? 'opacity-60' : ''}`}>
+              <div key={n.id} className={`flex gap-2 rounded-md p-2 transition-colors hover:bg-muted/60 ${read[n.id] ? 'opacity-60' : ''}`}>
                 <div className="pt-0.5">
                   {n.severity === 'critical'
-                    ? <AlertTriangle className="h-5 w-5 text-destructive" />
+                    ? <AlertTriangle className="h-4 w-4 text-destructive" />
                     : n.severity === 'warning'
-                      ? <Wrench className="h-5 w-5" />
-                      : <Package className="h-5 w-5" />}
+                      ? <Wrench className="h-4 w-4" />
+                      : <Package className="h-4 w-4" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <strong>{n.title}</strong>
-                    {!read[n.id] && <Badge>New</Badge>}
+                  <div className="flex items-center gap-1.5 text-[12px] leading-4">
+                    <strong className="font-semibold">{n.title}</strong>
+                    {!read[n.id] && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Unread" />}
                   </div>
-                  <p className="text-sm text-muted-foreground mt-0.5">{n.detail}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{n.detail}</p>
+                  <p className="mt-0.5 text-[10px] leading-3.5 text-muted-foreground">{new Date(n.createdAt).toLocaleString()}</p>
                 </div>
                 {!read[n.id] && (
-                  <Button size="sm" variant="outline" onClick={() => markRead(n.id)}>
-                    Mark read
+                  <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]" onClick={() => markRead(n.id)}>
+                    Read
                   </Button>
                 )}
               </div>
@@ -189,13 +199,13 @@ export function GlobalNotificationCenter({ assets, open, onOpenChange, onCountCh
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={markAllRead} disabled={unread === 0}>Mark all read</Button>
-          <Button onClick={() => onOpenChange(false)}>
-            <X className="h-4 w-4 mr-1" /> Close
+        <div className="flex items-center justify-between border-t px-2.5 py-1.5">
+          <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={markAllRead} disabled={unread === 0}>Mark all read</Button>
+          <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => onOpenChange(false)}>
+            <X className="h-3.5 w-3.5" /> Close
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

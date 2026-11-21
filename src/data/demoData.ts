@@ -31,7 +31,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-03-15',
     purchasePrice: 2499,
     warrantyExpiry: '2026-03-15',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     assignedTo: 'USR-001',
     notes: 'M2 Pro chip, 32GB RAM'
   },
@@ -47,7 +47,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-05-20',
     purchasePrice: 1899,
     warrantyExpiry: '2026-05-20',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     assignedTo: 'USR-002',
     notes: 'Intel i7, 16GB RAM'
   },
@@ -63,7 +63,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-02-10',
     purchasePrice: 619,
     warrantyExpiry: '2026-02-10',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     assignedTo: 'USR-001'
   },
   {
@@ -78,7 +78,7 @@ export const assets: Asset[] = [
     purchaseDate: '2022-11-05',
     purchasePrice: 1099,
     warrantyExpiry: '2024-11-05',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     assignedTo: 'USR-003'
   },
   {
@@ -93,7 +93,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-07-01',
     purchasePrice: 1699,
     warrantyExpiry: '2026-07-01',
-    location: 'LOC-002',
+    siteId: 'LOC-002',
     notes: 'Intel i7, 32GB RAM'
   },
   {
@@ -108,7 +108,7 @@ export const assets: Asset[] = [
     purchaseDate: '2022-08-15',
     purchasePrice: 1299,
     warrantyExpiry: '2025-08-15',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     notes: 'Undergoing RAM upgrade'
   },
   {
@@ -123,7 +123,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-01-20',
     purchasePrice: 1099,
     warrantyExpiry: '2025-01-20',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     assignedTo: 'USR-004'
   },
   {
@@ -138,7 +138,7 @@ export const assets: Asset[] = [
     purchaseDate: '2022-06-10',
     purchasePrice: 399,
     warrantyExpiry: '2025-06-10',
-    location: 'LOC-002'
+    siteId: 'LOC-002'
   },
   {
     id: 'AST-009',
@@ -152,7 +152,7 @@ export const assets: Asset[] = [
     purchaseDate: '2021-09-25',
     purchasePrice: 8999,
     warrantyExpiry: '2026-09-25',
-    location: 'LOC-003',
+    siteId: 'LOC-003',
     notes: 'Production database server'
   },
   {
@@ -167,7 +167,7 @@ export const assets: Asset[] = [
     purchaseDate: '2020-04-15',
     purchasePrice: 699,
     warrantyExpiry: '2023-04-15',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     notes: 'Screen damage, disposed'
   },
   {
@@ -182,7 +182,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-04-01',
     purchasePrice: 99,
     warrantyExpiry: '2025-04-01',
-    location: 'LOC-002'
+    siteId: 'LOC-002'
   },
   {
     id: 'AST-012',
@@ -196,7 +196,7 @@ export const assets: Asset[] = [
     purchaseDate: '2023-06-15',
     purchasePrice: 1599,
     warrantyExpiry: '2026-06-15',
-    location: 'LOC-001',
+    siteId: 'LOC-001',
     assignedTo: 'USR-005'
   }
 ];
@@ -207,7 +207,7 @@ export const users: User[] = [
     name: 'Sarah Johnson',
     email: 'sarah.johnson@company.com',
     department: 'Engineering',
-    locationId: 'LOC-001',
+    siteId: 'LOC-001',
     role: 'admin',
     phone: '+1 (555) 123-4567',
     joinDate: '2020-03-15',
@@ -218,7 +218,7 @@ export const users: User[] = [
     name: 'Michael Chen',
     email: 'michael.chen@company.com',
     department: 'Engineering',
-    locationId: 'LOC-001',
+    siteId: 'LOC-001',
     role: 'user',
     phone: '+1 (555) 234-5678',
     joinDate: '2021-06-01',
@@ -229,7 +229,7 @@ export const users: User[] = [
     name: 'Emily Rodriguez',
     email: 'emily.rodriguez@company.com',
     department: 'Marketing',
-    locationId: 'LOC-002',
+    siteId: 'LOC-002',
     role: 'manager',
     phone: '+1 (555) 345-6789',
     joinDate: '2019-11-20',
@@ -240,7 +240,7 @@ export const users: User[] = [
     name: 'David Kim',
     email: 'david.kim@company.com',
     department: 'Design',
-    locationId: 'LOC-001',
+    siteId: 'LOC-001',
     role: 'user',
     phone: '+1 (555) 456-7890',
     joinDate: '2022-01-10',
@@ -251,7 +251,7 @@ export const users: User[] = [
     name: 'Jessica Martinez',
     email: 'jessica.martinez@company.com',
     department: 'Sales',
-    locationId: 'LOC-004',
+    siteId: 'LOC-004',
     role: 'user',
     phone: '+1 (555) 567-8901',
     joinDate: '2022-08-15',
@@ -262,7 +262,7 @@ export const users: User[] = [
     name: 'Robert Taylor',
     email: 'robert.taylor@company.com',
     department: 'Finance',
-    locationId: 'LOC-002',
+    siteId: 'LOC-002',
     role: 'manager',
     phone: '+1 (555) 678-9012',
     joinDate: '2018-05-01',
@@ -273,7 +273,7 @@ export const users: User[] = [
     name: 'Amanda White',
     email: 'amanda.white@company.com',
     department: 'HR',
-    locationId: 'LOC-001',
+    siteId: 'LOC-001',
     role: 'user',
     phone: '+1 (555) 789-0123',
     joinDate: '2021-09-20',
@@ -284,7 +284,7 @@ export const users: User[] = [
     name: 'James Wilson',
     email: 'james.wilson@company.com',
     department: 'Engineering',
-    locationId: 'LOC-004',
+    siteId: 'LOC-004',
     role: 'user',
     phone: '+1 (555) 890-1234',
     joinDate: '2023-02-01',
@@ -822,7 +822,7 @@ export const assetHistory: AssetHistoryEvent[] = assets.flatMap((asset) => {
       timestamp: `${asset.purchaseDate}T14:00:00`,
       action: 'Received',
       to: 'IT Asset Manager',
-      locationId: asset.location,
+      siteId: asset.siteId,
       notes: 'Asset received into inventory.'
     }
   ];
@@ -840,7 +840,7 @@ export const assetHistory: AssetHistoryEvent[] = assets.flatMap((asset) => {
       from: 'IT Asset Manager',
       to: assignment.userName,
       userId: assignment.userId,
-      locationId: asset.location,
+      siteId: asset.siteId,
       notes: assignment.notes
     });
 
@@ -853,7 +853,7 @@ export const assetHistory: AssetHistoryEvent[] = assets.flatMap((asset) => {
         from: assignment.userName,
         to: 'IT Asset Manager',
         userId: assignment.userId,
-        locationId: asset.location,
+        siteId: asset.siteId,
         notes: 'Asset returned to IT inventory.'
       });
     }
@@ -867,7 +867,7 @@ export const assetHistory: AssetHistoryEvent[] = assets.flatMap((asset) => {
       action: 'Under Repair',
       from: 'Available',
       to: 'Under Repair',
-      locationId: asset.location,
+      siteId: asset.siteId,
       notes: asset.notes
     });
   }
@@ -880,7 +880,7 @@ export const assetHistory: AssetHistoryEvent[] = assets.flatMap((asset) => {
       action: 'Retired',
       from: 'In Service',
       to: 'Retired',
-      locationId: asset.location,
+      siteId: asset.siteId,
       notes: asset.notes
     });
   }

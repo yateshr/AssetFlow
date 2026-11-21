@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { Building2, Check, Hash, Plus, Save, Trash2, MapPin } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { loadAssetTagSiteSeries, saveAssetTagSiteSeries, type AssetTagSiteSeries } from '@/lib/db';
+import { Check, Hash, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -7,45 +8,19 @@ import {
   saveConfig,
   createEmptyConfig,
   type AssetFlowConfig,
-  type ConfigEntity,
   type NumberingComponentType,
 } from '@/lib/assetflowConfig';
-import type { Location, User } from '@/data/models';
-
-
-const CURRENCY_OPTIONS = [
-  ['INR', 'INR — Indian Rupee (₹)'],
-  ['USD', 'USD — US Dollar ($)'],
-  ['EUR', 'EUR — Euro (€)'],
-  ['GBP', 'GBP — British Pound (£)'],
-  ['AED', 'AED — UAE Dirham'],
-  ['SAR', 'SAR — Saudi Riyal'],
-  ['JPY', 'JPY — Japanese Yen (¥)'],
-  ['CNY', 'CNY — Chinese Yuan (¥)'],
-  ['AUD', 'AUD — Australian Dollar (A$)'],
-  ['CAD', 'CAD — Canadian Dollar (C$)'],
-  ['SGD', 'SGD — Singapore Dollar (S$)'],
-] as const;
-
-const TIMEZONE_OPTIONS = [
-  ['UTC', 'UTC'],
-  ['Asia/Kolkata', 'Asia/Kolkata — India Standard Time'],
-  ['Asia/Dubai', 'Asia/Dubai — Gulf Standard Time'],
-  ['Asia/Singapore', 'Asia/Singapore — Singapore Time'],
-  ['Asia/Tokyo', 'Asia/Tokyo — Japan Standard Time'],
-  ['Asia/Shanghai', 'Asia/Shanghai — China Standard Time'],
-  ['Europe/London', 'Europe/London — United Kingdom'],
-  ['Europe/Paris', 'Europe/Paris — Central European Time'],
-  ['America/New_York', 'America/New_York — Eastern Time'],
-  ['America/Los_Angeles', 'America/Los_Angeles — Pacific Time'],
-] as const;
+import type { AssetCategory, Location, User } from '@/data/models';
+import { TimeZoneSelect } from '@/components/ui/timezone-select';
 
 
 interface ConfigurationPageProps {
   usersList: User[];
   onUsersChange: (users: User[]) => void;
-  locationsList: Location[];
-  onLocationsChange: (locations: Location[]) => void;
+  sitesList: Location[];
+  onSitesChange: (locations: Location[]) => void;
+  assetCategories: AssetCategory[];
+  onAssetCategoriesChange: (categories: AssetCategory[]) => void;
 }
 
 const inputClass =
@@ -59,21 +34,15 @@ const componentLabels: Record<NumberingComponentType, string> = {
   sequence: 'Sequence',
 };
 
-function newEntity(): ConfigEntity {
-  return {
-    id: crypto.randomUUID(),
-    name: '',
-    code: '',
-    active: true,
-  };
-}
-
 export function ConfigurationPage({
   usersList,
   onUsersChange,
-  locationsList,
-  onLocationsChange,
+  sitesList,
+  onSitesChange,
+  assetCategories,
+  onAssetCategoriesChange,
 }: ConfigurationPageProps) {
+  const [tagRules,setTagRules]=useState<AssetTagSiteSeries[]>([]);
   const [config, setConfig] = useState<AssetFlowConfig>(() => loadConfig());
   const [saved, setSaved] = useState(false);
 
@@ -98,66 +67,23 @@ export function ConfigurationPage({
     saveConfig(empty);
   };
 
-  const addLocation = () => {
-    const name = window.prompt('Location name');
-    if (!name?.trim()) return;
-
-    const value = name.trim();
-    if (locationsList.some(l => l.name.trim().toLowerCase() === value.toLowerCase())) return;
-
-    onLocationsChange([
-      ...locationsList,
-      {
-        id: crypto.randomUUID(),
-        name: value,
-      } as Location,
-    ]);
-  };
-
-  const deleteLocation = (location: Location) => {
-    const affectedUsers = usersList.filter(user => user.locationId === location.id).length;
-
-    const confirmed = window.confirm(
-      affectedUsers
-        ? `Delete "${location.name}"? ${affectedUsers} user${affectedUsers === 1 ? '' : 's'} will become without location.`
-        : `Delete "${location.name}"?`
-    );
-    if (!confirmed) return;
-
-    onLocationsChange(locationsList.filter(item => item.id !== location.id));
-
-    if (affectedUsers) {
-      onUsersChange(
-        usersList.map(user =>
-          user.locationId === location.id
-            ? { ...user, locationId: '' }
-            : user
-        )
-      );
-    }
-  };
-
   const addEntity = () => {
-    const entity = newEntity();
-    setConfig(current => ({
-      ...current,
-      assetTypes: [...current.assetTypes, entity],
-    }));
+    onAssetCategoriesChange([...assetCategories, { id: crypto.randomUUID(), name: '', code: '', active: true }]);
   };
 
-  const updateEntity = (id: string, patch: Partial<ConfigEntity>) => {
-    setConfig(current => ({
-      ...current,
-      assetTypes: current.assetTypes.map(item => item.id === id ? { ...item, ...patch } : item),
-    }));
+  const updateEntity = (id: string, patch: Partial<AssetCategory>) => {
+    onAssetCategoriesChange(assetCategories.map(item => item.id === id ? { ...item, ...patch } : item));
   };
 
   const removeAssetType = (id: string) => {
-    setConfig(current => ({
-      ...current,
-      assetTypes: current.assetTypes.filter(item => item.id !== id),
-    }));
+    const category=assetCategories.find(item=>item.id===id);
+    if(!category||!window.confirm(`Delete asset category "${category.name||'Unnamed category'}"? Existing records will retain their stored category value.`))return;
+    onAssetCategoriesChange(assetCategories.filter(item => item.id !== id));
   };
+  useEffect(()=>{void loadAssetTagSiteSeries().then(setTagRules).catch(error=>console.error('Could not load Site Series',error));},[]);
+  const addTagRule=()=>setTagRules([...tagRules,{id:crypto.randomUUID(),siteId:sitesList[0]?.id||'',companyPrefix:'NP',functionPrefix:'IT',series:'',nextNumber:1,digits:4,active:true}]);
+  const updateTagRule=(id:string,patch:Partial<AssetTagSiteSeries>)=>setTagRules(tagRules.map(rule=>rule.id===id?{...rule,...patch}:rule));
+  const persistTagRule=async(rule:AssetTagSiteSeries)=>{try{const id=await saveAssetTagSiteSeries(rule);setTagRules(current=>current.map(item=>item.id===rule.id?{...item,id}:item));}catch(error){window.alert(error instanceof Error?error.message:'Could not save Site Series');}};
 
   const addRule = () => {
     const rule = {
@@ -217,9 +143,9 @@ export function ConfigurationPage({
     <div className="af-stagger space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Organization Setup</h2>
+          <h2 className="text-xl font-semibold">Asset structure and numbering</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure the organization, locations, and numbering rules used throughout AssetFlow.
+            Configure asset categories and the numbering rules used by the selected company.
           </p>
         </div>
         <div className="flex gap-2">
@@ -232,29 +158,8 @@ export function ConfigurationPage({
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" />Organization</CardTitle></CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-1 text-sm">
-            Company Name
-            <input className={inputClass} value={config.organization.companyName}
-              onChange={e => update({ organization: { ...config.organization, companyName: e.target.value } })} />
-          </label>
-          <label className="space-y-1 text-sm">
-            Legal Name
-            <input className={inputClass} value={config.organization.legalName}
-              onChange={e => update({ organization: { ...config.organization, legalName: e.target.value } })} />
-          </label>
-          <label className="space-y-1 text-sm">
-            Currency
-            <input className={inputClass} value={config.organization.currency}
-              onChange={e => update({ organization: { ...config.organization, currency: e.target.value } })} placeholder="Administrator decides" />
-          </label>
-          <label className="space-y-1 text-sm">
-            Timezone
-            <input className={inputClass} value={config.organization.timezone}
-              onChange={e => update({ organization: { ...config.organization, timezone: e.target.value } })} placeholder="Administrator decides" />
-          </label>
-        </CardContent>
+        <CardHeader><CardTitle>Site Series</CardTitle></CardHeader>
+        <CardContent className="space-y-3"><p className="text-sm text-muted-foreground">One shared counter per issuing Site. The asset type code changes, but every physical asset at that Site uses the same next number.</p><Button size="sm" onClick={addTagRule}><Plus className="mr-2 h-4 w-4"/>Add Site Series</Button>{tagRules.map(rule=>{const preview=[rule.companyPrefix,rule.functionPrefix,'TYPE',`${rule.series}${String(rule.nextNumber).padStart(rule.digits,'0')}`].filter(Boolean).join('-');return <div key={rule.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-4"><select className={inputClass} value={rule.siteId} onChange={e=>updateTagRule(rule.id,{siteId:e.target.value})}><option value="">Issuing site</option>{sitesList.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select><div className="grid grid-cols-3 gap-2"><input className={inputClass} placeholder="Company" value={rule.companyPrefix} onChange={e=>updateTagRule(rule.id,{companyPrefix:e.target.value.toUpperCase()})}/><input className={inputClass} placeholder="Function" value={rule.functionPrefix} onChange={e=>updateTagRule(rule.id,{functionPrefix:e.target.value.toUpperCase()})}/><input className={inputClass} placeholder="Series" value={rule.series} onChange={e=>updateTagRule(rule.id,{series:e.target.value.toUpperCase()})}/></div><div className="flex gap-2"><input className={inputClass} type="number" min={1} value={rule.nextNumber} onChange={e=>updateTagRule(rule.id,{nextNumber:Math.max(1,Number(e.target.value)||1)})}/><input className="h-10 w-20 rounded-md border border-input bg-background px-3 text-sm" type="number" min={1} max={8} value={rule.digits} onChange={e=>updateTagRule(rule.id,{digits:Math.max(1,Number(e.target.value)||1)})}/><Button size="sm" onClick={()=>void persistTagRule(rule)}>Save</Button></div><p className="text-xs text-muted-foreground md:col-span-4">Next tag example: <span className="font-mono text-foreground">{preview || 'Complete this Site Series'}</span></p></div>})}{tagRules.length===0&&<p className="text-sm text-muted-foreground">No Site Series configured yet.</p>}</CardContent>
       </Card>
 
       <Card>
@@ -276,44 +181,22 @@ export function ConfigurationPage({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2"><MapPin className="h-5 w-5" />Locations</span>
-            <Button size="sm" onClick={addLocation}><Plus className="mr-2 h-4 w-4" />Add Location</Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {locationsList.length === 0 && <p className="text-sm text-muted-foreground">No locations configured yet.</p>}
-          {locationsList.map(location => (
-            <div key={location.id} className="flex items-center gap-3 rounded-lg border p-3">
-              <div className="flex-1">
-                <p className="font-medium">{location.name}</p>
-                <p className="text-xs text-muted-foreground">{usersList.filter(user => user.locationId === location.id).length} user(s)</p>
-              </div>
-              <Button variant="ghost" size="icon" title="Delete location" onClick={() => deleteLocation(location)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
             <span>Asset Types</span>
             <Button size="sm" onClick={addEntity}><Plus className="mr-2 h-4 w-4" />Add Asset Type</Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {config.assetTypes.map(type => (
-            <div key={type.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-[1fr_180px_auto]">
+          {assetCategories.map(type => (
+            <div key={type.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-[1fr_180px_120px_auto]">
               <input className={inputClass} placeholder="Asset type name" value={type.name}
                 onChange={e => updateEntity(type.id, { name: e.target.value })} />
               <input className={inputClass} placeholder="Code (optional)" value={type.code || ''}
                 onChange={e => updateEntity(type.id, { code: e.target.value })} />
+              <label className="flex h-10 items-center gap-2 text-sm"><input type="checkbox" checked={type.active} onChange={e=>updateEntity(type.id,{active:e.target.checked})}/>{type.active?'Active':'Inactive'}</label>
               <Button variant="ghost" size="icon" onClick={() => removeAssetType(type.id)}><Trash2 className="h-4 w-4" /></Button>
             </div>
           ))}
-          {config.assetTypes.length === 0 && <p className="text-sm text-muted-foreground">No asset types configured yet.</p>}
+          {assetCategories.length === 0 && <p className="text-sm text-muted-foreground">No asset categories configured yet.</p>}
         </CardContent>
       </Card>
 

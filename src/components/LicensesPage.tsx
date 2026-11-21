@@ -13,9 +13,13 @@ import {
   formatDate, 
   formatCurrency 
 } from '@/data/models';
+import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 
 export function LicensesPage() {
   const [licensesList, setLicensesList] = useCollection<SoftwareLicense>('licenses');
+  const [licenseTypes]=useCollection<MasterDataOption>('license-types');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -102,7 +106,7 @@ export function LicensesPage() {
                   const expiry = new Date(l.expiryDate);
                   const now = new Date();
                   const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                  return diffDays <= 90 && diffDays > 0;
+                  return diffDays <= policy.licenseAlertDays && diffDays > 0;
                 }).length}
               </p>
               <p className="text-sm text-muted-foreground">Expiring Soon</p>
@@ -131,8 +135,7 @@ export function LicensesPage() {
               className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             >
               <option value="all">All Types</option>
-              <option value="subscription">Subscription</option>
-              <option value="perpetual">Perpetual</option>
+              {licenseTypes.filter(option=>option.active).map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
             </select>
           </div>
         </CardContent>
@@ -168,7 +171,7 @@ export function LicensesPage() {
                   const now = new Date();
                   const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                   const isExpired = daysUntilExpiry <= 0;
-                  const isExpiringSoon = daysUntilExpiry <= 90 && daysUntilExpiry > 0;
+                  const isExpiringSoon = daysUntilExpiry <= policy.licenseAlertDays && daysUntilExpiry > 0;
                   
                   return (
                     <TableRow key={license.id}>
@@ -277,11 +280,12 @@ function LicenseForm({ license, onSubmit, onCancel }: {
   onSubmit: (data: Omit<SoftwareLicense, 'id'>) => void;
   onCancel: () => void;
 }) {
+  const [licenseTypes]=useCollection<MasterDataOption>('license-types');
   const [formData, setFormData] = useState<Omit<SoftwareLicense, 'id'>>({
     name: license?.name || '',
     vendor: license?.vendor || '',
     licenseKey: license?.licenseKey || '',
-    type: license?.type || 'subscription',
+    type: license?.type || licenseTypes.find(option=>option.active)?.id || '',
     totalSeats: license?.totalSeats || 0,
     usedSeats: license?.usedSeats || 0,
     expiryDate: license?.expiryDate || '',
@@ -327,8 +331,7 @@ function LicenseForm({ license, onSubmit, onCancel }: {
             onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
-            <option value="subscription">Subscription</option>
-            <option value="perpetual">Perpetual</option>
+            {licenseTypes.filter(option=>option.active||option.id===formData.type).map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
           </select>
         </div>
         <div className="space-y-2">

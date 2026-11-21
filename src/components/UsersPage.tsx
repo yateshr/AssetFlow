@@ -1,13 +1,14 @@
-import { useState } from 'react';
-import { Plus, Search, Edit, Trash2, PackageCheck, Eye } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft } from 'lucide-react';
+import { getActiveCompanyId, listTransferLocations, requestTransfer, transferEmployee } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { type Location, type User, type UserRole, type UserStatus, type Asset, type Assignment, type AssetHistoryEvent, formatDate } from '@/data/models';
-import { IT_ASSET_MANAGER } from './assetLifecycle';
+import { type Location, type User, type UserStatus, type Asset, type AssetStatus, type Assignment, type AssetHistoryEvent, type Company, formatDate } from '@/data/models';
+import { custodianName } from './assetLifecycle';
 import { DepartmentsPage } from './DepartmentsPage';
 
 interface UsersPageProps {
@@ -16,7 +17,9 @@ interface UsersPageProps {
   currentUserId: string;
   departmentsList: string[];
   onDepartmentsChange: (departments: string[]) => void;
-  locationsList: Location[];
+  departmentRecords: Array<{ id: string; name: string; siteId?: string }>;
+  onDepartmentRecordsChange: (departments: Array<{ id: string; name: string; siteId?: string }>) => void;
+  sitesList: Location[];
   assetsList: Asset[];
   assignmentsList: Assignment[];
   onAssetsChange: (assets: Asset[]) => void;
@@ -24,21 +27,22 @@ interface UsersPageProps {
   history: AssetHistoryEvent[];
   onHistoryChange: (events: AssetHistoryEvent[]) => void;
   currentUser: User;
+  companies: Company[];
 }
 
 export function UsersPage({
-  usersList, onUsersChange, currentUserId, departmentsList, onDepartmentsChange, locationsList,
+  usersList, onUsersChange, currentUserId, departmentsList, onDepartmentsChange, departmentRecords, onDepartmentRecordsChange, sitesList,
   assetsList, assignmentsList, onAssetsChange, onAssignmentsChange,
-  history, onHistoryChange, currentUser
+  history, onHistoryChange, currentUser, companies
 }: UsersPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [departingUser, setDepartingUser] = useState<User | null>(null);
   const [departureCondition, setDepartureCondition] = useState<'good' | 'fair' | 'damaged'>('good');
   const [departureNotes, setDepartureNotes] = useState('');
   const [viewingAssetsUser, setViewingAssetsUser] = useState<User | null>(null);
+  const [transferringUser, setTransferringUser] = useState<User | null>(null);
 
   // Size the dialog for the table, growing it only when an asset name/model
   // needs more room. The table below is a real HTML table so the header and
@@ -61,26 +65,15 @@ export function UsersPage({
   );
 
   const filteredUsers = usersList.filter(user => {
-    const userLocation = locationsList.find(location => location.id === user.locationId);
+    const userLocation = sitesList.find(location => location.id === user.siteId);
     const matchesSearch = searchQuery === '' || 
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
       Boolean(userLocation?.name.toLowerCase().includes(searchQuery.toLowerCase()));
     
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    
-    return matchesSearch && matchesRole;
+    return matchesSearch;
   });
-
-  const getRoleBadge = (role: UserRole) => {
-    const variants = {
-      admin: 'bg-destructive/10 text-destructive border-destructive/20',
-      manager: 'bg-chart-5/10 text-chart-5 border-chart-5/20',
-      user: 'bg-muted text-muted-foreground border-muted'
-    };
-    return variants[role];
-  };
 
   const handleDelete = (id: string) => {
     if (id === currentUserId) {
@@ -97,12 +90,12 @@ export function UsersPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Users</h1>
-          <p className="text-muted-foreground">Manage employees and their access</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Employees</h1>
+          <p className="text-muted-foreground">Manage employee records, departments and assigned sites. Portal access is managed separately for IT staff.</p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Add User
+          Add Employee
         </Button>
       </div>
 
@@ -120,16 +113,6 @@ export function UsersPage({
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as UserRole | 'all')}
-              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
-            >
-              <option value="all">All Roles</option>
-              <option value="admin">Admin</option>
-              <option value="manager">Manager</option>
-              <option value="user">User</option>
-            </select>
           </div>
         </CardContent>
       </Card>
@@ -140,11 +123,11 @@ export function UsersPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
+                <TableHead>Employee</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Employee ID</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Office Location</TableHead>
-                <TableHead>Role</TableHead>
+                <TableHead>Assigned Site</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Join Date</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -153,13 +136,13 @@ export function UsersPage({
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No users found
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No employees found
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredUsers.map((user) => {
-                  const location = locationsList.find(item => item.id === user.locationId);
+                  const location = sitesList.find(item => item.id === user.siteId);
 
                   return (
                   <TableRow key={user.id}>
@@ -175,13 +158,9 @@ export function UsersPage({
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{user.employeeId || '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.department}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{location?.name || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={getRoleBadge(user.role)}>
-                        {user.role}
-                      </Badge>
-                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={
                         user.status === 'left'
@@ -204,9 +183,10 @@ export function UsersPage({
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon-sm" title="Edit User" onClick={() => setEditingUser(user)}>
+                        <Button variant="ghost" size="icon-sm" title="Edit employee" onClick={() => setEditingUser(user)}>
                           <Edit className="h-4 w-4" />
                         </Button>
+                        {user.status === 'active' && <Button variant="ghost" size="icon-sm" title="Transfer employee" onClick={() => setTransferringUser(user)}><ArrowRightLeft className="h-4 w-4" /></Button>}
                         {user.status === 'active' && (
                           <Button variant="ghost" size="icon-sm" title="Mark Left Company" onClick={() => {
                             setDepartureCondition('good');
@@ -233,8 +213,30 @@ export function UsersPage({
       <DepartmentsPage
         departmentsList={departmentsList}
         onDepartmentsChange={onDepartmentsChange}
+        departmentRecords={departmentRecords}
+        onDepartmentRecordsChange={onDepartmentRecordsChange}
+        sitesList={sitesList}
         usersList={usersList}
         onUsersChange={onUsersChange}
+      />
+
+      <EmployeeTransferDialog
+        employee={transferringUser}
+        companies={companies.filter(company => company.active)}
+        locations={sitesList}
+        departments={departmentsList}
+        currentUser={currentUser}
+        onClose={() => setTransferringUser(null)}
+        onTransfer={async ({ targetCompanyId, targetSiteId, targetDepartment, reason }) => {
+          const sourceCompanyId = getActiveCompanyId();
+          if (!transferringUser || !sourceCompanyId) return;
+          if (['super_admin', 'admin'].includes(currentUser.role)) {
+            await transferEmployee({ sourceCompanyId, targetCompanyId, employeeId: transferringUser.id, targetSiteId, targetDepartment, reason });
+            if (sourceCompanyId === targetCompanyId) onUsersChange(usersList.map(user => user.id === transferringUser.id ? { ...user, siteId: targetSiteId, department: targetDepartment } : user));
+            return;
+          }
+          await requestTransfer({ requestType: 'employee', sourceCompanyId, sourceSiteId: transferringUser.siteId, targetCompanyId, targetSiteId, targetDepartment, entityId: transferringUser.id, reason });
+        }}
       />
 
       {/* Assigned assets */}
@@ -445,7 +447,7 @@ export function UsersPage({
                 )}
 
                 <p className="text-xs text-muted-foreground leading-4">
-                  Tip: Use the asset's History action from the Assets page to see its complete lifecycle, including previous users, returns, repairs, and IT Asset Manager custody.
+                  Tip: Use the asset's History action from the Assets page to see its complete lifecycle, including previous users, returns, repairs, and {custodianName()} custody.
                 </p>
               </div>
             );
@@ -463,7 +465,7 @@ export function UsersPage({
           <DialogHeader>
             <DialogTitle>Mark Employee as Left Company</DialogTitle>
             <DialogDescription>
-              This will automatically return all assigned assets to IT Asset Manager.
+              This will automatically return all assigned assets to {custodianName()}.
             </DialogDescription>
           </DialogHeader>
           {departingUser && (() => {
@@ -481,7 +483,7 @@ export function UsersPage({
                           <p className="font-medium text-sm">{asset.name}</p>
                           <p className="text-xs text-muted-foreground">{asset.assetTag}</p>
                         </div>
-                        <Badge variant="outline">{IT_ASSET_MANAGER}</Badge>
+                        <Badge variant="outline">{custodianName()}</Badge>
                       </div>
                     ))}
                   </div>
@@ -557,12 +559,12 @@ export function UsersPage({
                     action: departureCondition === 'damaged' ? 'Under Repair' as const : 'Returned' as const,
                     performedBy: currentUser.id,
                     from: departingUser.name,
-                    to: IT_ASSET_MANAGER,
+                    to: custodianName(),
                     userId: departingUser.id,
                     reason: 'Employee left company',
                     notes: [
                       `Exit clearance return condition: ${departureCondition}.`,
-                      'Automatically returned to IT Asset Manager.',
+                      `Automatically returned to ${custodianName()}.`,
                       departureNotes.trim() ? departureNotes.trim() : ''
                     ].filter(Boolean).join(' ')
                   }))
@@ -585,7 +587,7 @@ export function UsersPage({
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingUser ? 'Edit User' : 'Add New User'}</DialogTitle>
+            <DialogTitle>{editingUser ? 'Edit Employee' : 'Add New Employee'}</DialogTitle>
             <DialogDescription>
               {editingUser ? 'Update user information below.' : 'Fill in the details to add a new user.'}
             </DialogDescription>
@@ -619,8 +621,9 @@ export function UsersPage({
               setShowCreateModal(false);
               setEditingUser(null);
             }}
-            departmentsList={departmentsList}
-            locationsList={locationsList}
+              departmentsList={departmentsList}
+              departmentRecords={departmentRecords}
+            sitesList={sitesList}
           />
         </DialogContent>
       </Dialog>
@@ -628,19 +631,31 @@ export function UsersPage({
   );
 }
 
-function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: { 
+function EmployeeTransferDialog({employee,companies,locations,departments,currentUser,onClose,onTransfer}:{employee:User|null;companies:Company[];locations:Location[];departments:string[];currentUser:User;onClose:()=>void;onTransfer:(input:{targetCompanyId:string;targetSiteId:string;targetDepartment:string;reason:string})=>Promise<void>}) {
+  const [companyId,setCompanyId]=useState(''); const [siteId,setSiteId]=useState(''); const [targetLocations,setTargetLocations]=useState<Array<{id:string;name:string}>>([]); const [department,setDepartment]=useState(''); const [reason,setReason]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
+  const sourceCompanyId=getActiveCompanyId()||'';
+  const sameCompany=companyId===sourceCompanyId;
+  useEffect(()=>{if(employee){setCompanyId(sourceCompanyId);setSiteId(employee.siteId);setDepartment(employee.department);setReason('');setError('');setBusy(false);}},[employee?.id,sourceCompanyId]);
+  useEffect(()=>{if(!employee||!companyId)return;if(companyId===sourceCompanyId){setTargetLocations(locations);setSiteId(employee.siteId);return;}setSiteId('');setTargetLocations([]);void listTransferLocations(sourceCompanyId,companyId).then(setTargetLocations).catch(error=>setError(error instanceof Error?error.message:String(error)));},[companyId,employee?.id,sourceCompanyId]);
+  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(companyId===sourceCompanyId&&siteId===employee?.siteId&&department.trim()===employee?.department){setError('Choose a different department, location, or company.');return;}setBusy(true);setError('');try{await onTransfer({targetCompanyId:companyId,targetSiteId:siteId,targetDepartment:department.trim(),reason:reason.trim()});onClose();}catch(err){setError(err instanceof Error?err.message:String(err));setBusy(false);}};
+  return <Dialog open={!!employee} onOpenChange={open=>!open&&onClose()}><DialogContent><form onSubmit={submit}><DialogHeader><DialogTitle>Transfer employee</DialogTitle><DialogDescription>{['super_admin','admin'].includes(currentUser.role)?'The employee record will be moved immediately. Assigned assets stay where they are.':'Your request will be sent to Super Admin for approval. Assigned assets stay where they are.'}</DialogDescription></DialogHeader><div className="space-y-4 py-5"><div className="rounded-lg border bg-muted/30 p-3 text-sm"><p className="font-medium">{employee?.name}</p><p className="font-mono text-xs text-muted-foreground">{employee?.employeeId || employee?.id} · {employee?.department}</p></div><label className="block space-y-1.5 text-sm">Target company<select required className="h-10 w-full rounded-md border bg-background px-3" value={companyId} onChange={event=>setCompanyId(event.target.value)}>{companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label><label className="block space-y-1.5 text-sm">Target site<select required className="h-10 w-full rounded-md border bg-background px-3" value={siteId} onChange={event=>setSiteId(event.target.value)}><option value="">Select target site</option>{targetLocations.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label className="block space-y-1.5 text-sm">Target department{sameCompany?<select required className="h-10 w-full rounded-md border bg-background px-3" value={department} onChange={event=>setDepartment(event.target.value)}>{departments.map(item=><option key={item} value={item}>{item}</option>)}</select>:<Input required value={department} onChange={event=>setDepartment(event.target.value)} placeholder="Department in the target company" />}</label><label className="block space-y-1.5 text-sm">Transfer reason<Input required value={reason} onChange={event=>setReason(event.target.value)} /></label>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}</div><DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={busy||!companyId||!siteId||!department.trim()}>{busy?'Submitting…':(['super_admin','admin'].includes(currentUser.role)?'Transfer employee':'Submit request')}</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function UserForm({ user, onSubmit, onCancel, departmentsList, departmentRecords, sitesList }: {
   user: User | null; 
   onSubmit: (data: Omit<User, 'id'>) => void;
   onCancel: () => void;
   departmentsList: string[];
-  locationsList: Location[];
+  departmentRecords: Array<{ id: string; name: string; siteId?: string }>;
+  sitesList: Location[];
 }) {
   const [formData, setFormData] = useState<Omit<User, 'id'>>({
     name: user?.name || '',
+    employeeId: user?.employeeId || '',
     email: user?.email || '',
     department: user?.department || '',
-    locationId: user?.locationId || '',
-    role: user?.role || 'user',
+    siteId: user?.siteId || '',
+    role: 'user',
     phone: user?.phone || '',
     joinDate: user?.joinDate || new Date().toISOString().split('T')[0],
     status: user?.status || 'active'
@@ -650,6 +665,7 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
     e.preventDefault();
     onSubmit(formData);
   };
+  const availableDepartments = formData.siteId ? departmentRecords.filter(department => department.siteId === formData.siteId).map(department => department.name) : [];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -663,15 +679,19 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Office Location</label>
+          <label className="text-sm font-medium">Employee ID</label>
+          <Input required value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} placeholder="e.g. EMP-1024" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Assigned Site</label>
           <select
-            value={formData.locationId}
-            onChange={(e) => setFormData({ ...formData, locationId: e.target.value })}
+            value={formData.siteId}
+            onChange={(e) => setFormData({ ...formData, siteId: e.target.value })}
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
             required
           >
-            <option value="">Select office location</option>
-            {locationsList.map(location => (
+            <option value="">Select site</option>
+            {sitesList.map(location => (
               <option key={location.id} value={location.id}>{location.name}</option>
             ))}
           </select>
@@ -702,21 +722,9 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
             required
           >
             <option value="">Select department</option>
-            {departmentsList.map(department => (
+            {(availableDepartments.length ? availableDepartments : departmentsList).map(department => (
               <option key={department} value={department}>{department}</option>
             ))}
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Role</label>
-          <select
-            value={formData.role}
-            onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
-            className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
-          >
-            <option value="user">User</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
           </select>
         </div>
         <div className="space-y-2">
@@ -744,7 +752,7 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, locationsList }: 
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">{user ? 'Update' : 'Create'} User</Button>
+        <Button type="submit">{user ? 'Update' : 'Create'} Employee</Button>
       </DialogFooter>
     </form>
   );

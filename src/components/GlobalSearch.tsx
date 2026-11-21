@@ -30,7 +30,7 @@ export function GlobalSearch({ assets, users, vendors, locations, invoices, onNa
       out.length < 15 && out.push({ id, title, subtitle, type, page, Icon });
 
     assets.forEach(a => {
-      if ([a.name, a.assetTag, a.serialNumber, a.manufacturer, a.model, a.status, a.location].some(v => v?.toLowerCase().includes(q))) {
+      if ([a.name, a.assetTag, a.serialNumber, a.manufacturer, a.model, a.status, a.siteId].some(v => v?.toLowerCase().includes(q))) {
         add(`asset-${a.id}`, a.name, `${a.assetTag} • ${a.manufacturer} ${a.model}`, 'Asset', 'assets', Package);
       }
     });
@@ -65,7 +65,7 @@ export function GlobalSearch({ assets, users, vendors, locations, invoices, onNa
         onChange={e => setQuery(e.target.value)}
         onKeyDown={e => e.key === 'Escape' && setQuery('')}
         placeholder="Search assets, people, vendors, invoices..."
-        className="pl-9 pr-9 w-[300px] lg:w-[420px]"
+        className="w-[min(300px,calc(100vw-150px))] pl-9 pr-9 sm:w-[300px] lg:w-[clamp(300px,32vw,420px)]"
       />
       {query && <button className="absolute right-2 top-1/2 -translate-y-1/2 p-1" onClick={() => setQuery('')} aria-label="Clear"><X className="h-4 w-4" /></button>}
       {q && (

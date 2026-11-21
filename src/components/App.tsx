@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { 
   LayoutDashboard, 
@@ -29,23 +29,8 @@ import { Button } from '@/components/ui/button';
 import { Login, ConfigMissing } from './Login';
 import { Toaster } from '@/components/ui/sonner';
 import { loadConfig, saveConfig } from '@/lib/assetflowConfig';
-import { Dashboard } from './Dashboard';
-import { AssetsPage } from './AssetsPage';
-import { UsersPage } from './UsersPage';
-import { LocationsPage } from './LocationsPage';
-import { VendorsPage } from './VendorsPage';
-import { InvoicesPage } from './InvoicesPage';
-import { AssignmentsPage } from './AssignmentsPage';
-import { AuditLogsPage } from './AuditLogsPage';
-import { LicensesPage } from './LicensesPage';
-import { SettingsPage } from './SettingsPage';
-import { CallLogsPage } from './CallLogsPage';
-import { ReportsPage } from './ReportsPage';
 import { GlobalSearch } from './GlobalSearch';
 import { GlobalNotificationCenter } from './GlobalNotificationCenter';
-import { OperationsPage } from './OperationsPage';
-import { DataManagementPage } from './DataManagementPage';
-import { SettingsWithOrganizationPage } from './SettingsWithOrganizationPage';
 import {
   type Location,
   type User,
@@ -55,20 +40,71 @@ import {
   type Invoice,
   type AssetHistoryEvent,
   type ItCallLog,
+  type AssetCategory,
+  type Company,
 } from '@/data/models';
+import { DEFAULT_ASSET_CATEGORIES } from '@/data/assetCategories';
+import { DEFAULT_SYSTEM_POLICY, MASTER_DATA_DEFAULTS, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 import { supabase } from '@/lib/supabase';
 import { signOut } from '@/lib/auth';
-import { clearCache, getCollection, hydrate, replaceCollection, useCollection } from '@/lib/db';
+import { clearCache, getActiveCompanyId, getCollection, hydrate, loadCompanies, replaceCollection, useCollection } from '@/lib/db';
 import { eraseAllData, loadDemoData } from '@/lib/demo';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
+import { PageLoader, WorkspaceBoot } from '@/components/ui/loading';
 
-export type Page = 'dashboard' | 'reports' | 'assets' | 'operations' | 'call-logs' | 'users' | 'locations' | 'vendors' | 'invoices' | 'assignments' | 'audit-logs' | 'licenses' | 'settings' | 'data-tools';
+const Dashboard = lazy(() => import('./Dashboard').then(module => ({ default: module.Dashboard })));
+const AssetsPage = lazy(() => import('./AssetsPage').then(module => ({ default: module.AssetsPage })));
+const UsersPage = lazy(() => import('./UsersPage').then(module => ({ default: module.UsersPage })));
+const LocationsPage = lazy(() => import('./LocationsPage').then(module => ({ default: module.LocationsPage })));
+const VendorsPage = lazy(() => import('./VendorsPage').then(module => ({ default: module.VendorsPage })));
+const InvoicesPage = lazy(() => import('./InvoicesPage').then(module => ({ default: module.InvoicesPage })));
+const AssignmentsPage = lazy(() => import('./AssignmentsPage').then(module => ({ default: module.AssignmentsPage })));
+const AuditLogsPage = lazy(() => import('./AuditLogsPage').then(module => ({ default: module.AuditLogsPage })));
+const LicensesPage = lazy(() => import('./LicensesPage').then(module => ({ default: module.LicensesPage })));
+const CallLogsPage = lazy(() => import('./CallLogsPage').then(module => ({ default: module.CallLogsPage })));
+const ReportsPage = lazy(() => import('./ReportsPage').then(module => ({ default: module.ReportsPage })));
+const OperationsPage = lazy(() => import('./OperationsPage').then(module => ({ default: module.OperationsPage })));
+const DataManagementPage = lazy(() => import('./DataManagementPage').then(module => ({ default: module.DataManagementPage })));
+const SettingsWithOrganizationPage = lazy(() => import('./SettingsWithOrganizationPage').then(module => ({ default: module.SettingsWithOrganizationPage })));
+const TransferApprovalsPage = lazy(() => import('./TransferApprovalsPage').then(module => ({ default: module.TransferApprovalsPage })));
 
-type DepartmentRecord = { id: string; name: string };
+export type Page = 'dashboard' | 'reports' | 'assets' | 'operations' | 'call-logs' | 'users' | 'locations' | 'vendors' | 'invoices' | 'assignments' | 'audit-logs' | 'licenses' | 'settings' | 'data-tools' | 'transfer-approvals';
 
-function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout: () => void }) {
+type DepartmentRecord = { id: string; name: string; siteId?: string };
+
+class ApplicationErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('AssetFlow application error', error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
+        <section className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-8 shadow-2xl">
+          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/15 text-rose-300">
+            <ShieldAlert className="h-6 w-6" />
+          </div>
+          <h1 className="text-xl font-semibold">AssetFlow could not start</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-300">The browser encountered an application error. Refresh once; if it persists, the technical details below identify the failing part.</p>
+          <pre className="mt-5 max-h-36 overflow-auto rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-rose-200">{this.state.error.message}</pre>
+          <Button className="mt-6" onClick={() => window.location.reload()}>Reload AssetFlow</Button>
+        </section>
+      </div>
+    );
+  }
+}
+
+function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { currentUserId: string; currentUserProfile: User; onLogout: () => void; companies: Company[] }) {
   const [usersList, setUsersList] = useCollection<User>('users');
-  const [locationsList, setLocationsList] = useCollection<Location>('locations');
+  const [sitesList, setSitesList] = useCollection<Location>('locations');
   const [departmentRecords, setDepartmentRecords] = useCollection<DepartmentRecord>('departments');
   const [assetsList, setAssetsList] = useCollection<Asset>('assets');
   const [assignmentsList, setAssignmentsList] = useCollection<Assignment>('assignments');
@@ -76,15 +112,18 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
   const [vendorsList, setVendorsList] = useCollection<Vendor>('vendors');
   const [assetHistory, setAssetHistory] = useCollection<AssetHistoryEvent>('history');
   const [callLogsList, setCallLogsList] = useCollection<ItCallLog>('call-logs');
-  const departmentsList = departmentRecords.map(d => d.name);
-  const setDepartmentsList = (names: string[]) => setDepartmentRecords(names.map(name => ({ id: name, name })));
+  const [assetCategories, setAssetCategories] = useCollection<AssetCategory>('asset-categories');
+  const departmentsList = Array.from(new Set(departmentRecords.map(d => d.name)));
+  const setDepartmentsList = (names: string[]) => setDepartmentRecords(names.map(name => ({ id: crypto.randomUUID(), name })));
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [operationsTab, setOperationsTab] = useState('overview');
   const [notificationCount, setNotificationCount] = useState(0);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [assetFilterRequest, setAssetFilterRequest] = useState<{ status?: Asset['status']; warranty?: 'expired' | '30' | '60' | '90'; type?: Asset['type'] } | null>(null);
-  const signedInUser = usersList.find(user => user.id === currentUserId) ?? null;
+  const signedInUser = usersList.find(user => user.id === currentUserId) ?? currentUserProfile;
+  const activeCompanyId=getActiveCompanyId();
+  const activeCompany=companies.find(company=>company.id===activeCompanyId);
   const setCurrentUser = (_: null) => onLogout();
 
   const [collapsed, setCollapsed] = useState(false);
@@ -116,9 +155,6 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
     });
   };
 
-  if (!signedInUser) return null;
-
-
   const menuGroups: { label: string; items: { id: Page; label: string; icon: typeof Package }[] }[] = [
     {
       label: 'Overview',
@@ -147,8 +183,8 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
     {
       label: 'Organization',
       items: [
-        { id: 'users', label: 'Users', icon: Users },
-        { id: 'locations', label: 'Locations', icon: MapPin },
+        { id: 'users', label: 'Employees', icon: Users },
+        { id: 'locations', label: 'Sites', icon: MapPin },
         { id: 'vendors', label: 'Vendors', icon: Truck },
       ],
     },
@@ -156,7 +192,8 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
       label: 'System',
       items: [
         { id: 'settings', label: 'Settings', icon: Settings },
-        ...(signedInUser.role === 'admin' ? [{ id: 'data-tools' as Page, label: 'Demo & Data', icon: Database }] : []),
+        ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'transfer-approvals' as Page, label: 'Transfer Approvals', icon: ArrowRightLeft }] : []),
+        ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'data-tools' as Page, label: 'Data Management', icon: Database }] : []),
       ],
     },
   ];
@@ -183,8 +220,9 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
             assignmentsList={assignmentsList}
             invoicesList={invoicesList}
             vendorsList={vendorsList}
-            locationsList={locationsList}
+            sitesList={sitesList}
             departmentsList={departmentsList}
+            assetCategories={assetCategories}
             callLogsList={callLogsList}
             history={assetHistory}
           />
@@ -210,16 +248,19 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
             assetsList={assetsList}
             onAssetsChange={setAssetsList}
             usersList={usersList}
-            locationsList={locationsList}
+            sitesList={sitesList}
             history={assetHistory}
             onHistoryChange={setAssetHistory}
             currentUser={signedInUser}
+            assetCategories={assetCategories}
+            invoices={invoicesList}
+            companies={companies}
             initialFilter={assetFilterRequest}
             onInitialFilterConsumed={() => setAssetFilterRequest(null)}
           />
         );
       case 'call-logs':
-        return <CallLogsPage usersList={usersList} departmentsList={departmentsList} callLogs={callLogsList} onCallLogsChange={setCallLogsList} />;
+        return <CallLogsPage usersList={usersList} departmentsList={departmentsList} assetsList={assetsList} callLogs={callLogsList} onCallLogsChange={setCallLogsList} currentUser={signedInUser} />;
       case 'users':
         return (
           <UsersPage
@@ -228,7 +269,9 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
             currentUserId={signedInUser.id}
             departmentsList={departmentsList}
             onDepartmentsChange={setDepartmentsList}
-            locationsList={locationsList}
+            departmentRecords={departmentRecords}
+            onDepartmentRecordsChange={setDepartmentRecords}
+            sitesList={sitesList}
             assetsList={assetsList}
             assignmentsList={assignmentsList}
             onAssetsChange={setAssetsList}
@@ -236,10 +279,11 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
             history={assetHistory}
             onHistoryChange={setAssetHistory}
             currentUser={signedInUser}
+            companies={companies}
           />
         );
       case 'locations':
-        return <LocationsPage locationsList={locationsList} onLocationsChange={setLocationsList} />;
+        return <LocationsPage sitesList={sitesList} onSitesChange={setSitesList} />;
       case 'vendors':
         return (
           <VendorsPage
@@ -259,6 +303,8 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
       currentUser={signedInUser}
       history={assetHistory}
       onHistoryChange={setAssetHistory}
+      assetCategories={assetCategories}
+      sitesList={sitesList}
     />
         );
       case 'assignments':
@@ -283,18 +329,24 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
           <SettingsWithOrganizationPage
             usersList={usersList}
             onUsersChange={setUsersList}
-            locationsList={locationsList}
-            onLocationsChange={setLocationsList}
+            sitesList={sitesList}
+            onSitesChange={setSitesList}
+            assetCategories={assetCategories}
+            onAssetCategoriesChange={setAssetCategories}
+            companies={companies}
+            onCompaniesChanged={() => window.location.reload()}
           />
         );
       case 'data-tools':
         return (
           <DataManagementPage
-            isAdmin={signedInUser.role === 'admin'}
+            isAdmin={['super_admin','admin'].includes(signedInUser.role)}
             onLoadDemoData={async () => { await loadDemoData(); window.location.reload(); }}
             onEraseAllData={async () => { await eraseAllData(); window.location.reload(); }}
           />
         );
+      case 'transfer-approvals':
+        return <TransferApprovalsPage companies={companies} />;
       default:
         return <Dashboard onNavigate={setCurrentPage} assetsList={assetsList} usersList={usersList} assignmentsList={assignmentsList} onAssetDrilldown={(filter) => { setAssetFilterRequest(filter); setCurrentPage('assets'); }} />;
     }
@@ -304,7 +356,7 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
   const currentLabel = menuItems.find(i => i.id === currentPage)?.label ?? '';
 
   return (
-    <div className="flex h-screen af-ambient">
+    <div className="flex h-screen bg-background">
       {/* Mobile sidebar overlay */}
       <div
         className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${sidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
@@ -317,7 +369,7 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
           fixed lg:static inset-y-0 left-0 z-50 shrink-0
           bg-sidebar border-r border-sidebar-border
           transition-[transform,width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
-          w-64 ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'}
+          w-[248px] ${collapsed ? 'lg:w-[68px]' : 'lg:w-[248px]'}
           ${sidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'}
         `}
       >
@@ -325,10 +377,10 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-primary to-chart-4 flex items-center justify-center shadow-lg shadow-primary/30">
-                <Package className="h-5 w-5 text-white" />
+              <div className="h-8 w-8 shrink-0 rounded-md bg-white/10 ring-1 ring-white/10 flex items-center justify-center">
+                <Package className="h-[18px] w-[18px] text-sidebar-primary" />
               </div>
-              <span className={`font-semibold text-lg tracking-tight text-sidebar-foreground whitespace-nowrap transition-opacity duration-200 ${collapsed ? 'lg:opacity-0' : ''}`}>
+              <span className={`font-semibold text-[17px] tracking-[-0.02em] text-sidebar-foreground whitespace-nowrap transition-opacity duration-150 ${collapsed ? 'lg:opacity-0' : ''}`}>
                 AssetFlow
               </span>
             </div>
@@ -338,10 +390,10 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-5">
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-4">
             {menuGroups.map((group) => (
               <div key={group.label}>
-                <p className={`px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 transition-opacity duration-200 ${collapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0 lg:overflow-hidden' : ''}`}>
+                <p className={`px-2.5 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45 transition-opacity duration-150 ${collapsed ? 'lg:opacity-0 lg:h-0 lg:mb-0 lg:overflow-hidden' : ''}`}>
                   {group.label}
                 </p>
                 <ul className="space-y-0.5">
@@ -358,18 +410,18 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
                           title={collapsed ? item.label : undefined}
                           aria-current={isActive ? 'page' : undefined}
                           className={`
-                            group relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
-                            transition-all duration-200 active:scale-[0.98]
+                            group relative w-full flex items-center gap-3 px-2.5 py-2 rounded-md text-[13px] font-medium
+                            transition-colors duration-150
                             ${isActive
                               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                              : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground hover:translate-x-0.5'
+                              : 'text-sidebar-foreground/68 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                             }
                           `}
                         >
                           <span
                             className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-primary transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isActive ? 'h-5 opacity-100' : 'h-0 opacity-0'}`}
                           />
-                          <Icon className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-primary' : ''}`} />
+                          <Icon className={`h-[17px] w-[17px] shrink-0 ${isActive ? 'text-sidebar-primary' : ''}`} />
                           <span className={`whitespace-nowrap transition-opacity duration-200 ${collapsed ? 'lg:opacity-0' : ''}`}>{item.label}</span>
                         </button>
                       </li>
@@ -382,8 +434,8 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
 
           {/* User info */}
           <div className="border-t border-sidebar-border p-3">
-            <div className="flex items-center gap-3 rounded-xl p-2 hover:bg-sidebar-accent/50 transition-colors">
-              <div className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-primary to-chart-4 text-white flex items-center justify-center text-sm font-semibold ring-2 ring-sidebar-border">
+            <div className="flex items-center gap-3 rounded-md p-2 hover:bg-sidebar-accent transition-colors">
+              <div className="h-8 w-8 shrink-0 rounded-md bg-white/10 text-sidebar-foreground flex items-center justify-center text-xs font-semibold ring-1 ring-white/10">
                 {initials}
               </div>
               <div className={`flex-1 min-w-0 ${collapsed ? 'lg:hidden' : ''}`}>
@@ -407,7 +459,7 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <header className="h-16 shrink-0 border-b border-border/70 af-glass sticky top-0 z-30 flex items-center justify-between px-4 lg:px-6">
+        <header className="h-16 shrink-0 border-b bg-card sticky top-0 z-30 flex items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
@@ -425,13 +477,20 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
               assets={assetsList}
               users={usersList}
               vendors={vendorsList}
-              locations={locationsList}
+              locations={sitesList}
               invoices={invoicesList}
               onNavigate={(page) => setCurrentPage(page)}
             />
           </div>
           <div className="flex items-center gap-1">
-            <span className="hidden md:block mr-3 text-sm text-muted-foreground">{currentLabel}</span>
+            <label className="hidden sm:flex items-center gap-2 mr-2 rounded-md border bg-background px-2.5 h-9">
+              <Building2 className="h-4 w-4 text-muted-foreground"/>
+              <span className="sr-only">Active company</span>
+              <select className="max-w-48 bg-transparent text-sm font-medium outline-none" value={activeCompanyId??''} onChange={event=>{localStorage.setItem('assetflow-company-id',event.target.value);window.location.reload();}}>
+                {companies.filter(company=>company.active).map(company=><option key={company.id} value={company.id}>{company.name}</option>)}
+              </select>
+            </label>
+            <span className="hidden xl:block mr-3 text-xs font-medium text-muted-foreground">{activeCompany?.code ?? 'Workspace'} / <span className="text-foreground">{currentLabel}</span></span>
             <Button
               variant="ghost"
               size="icon"
@@ -443,33 +502,39 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
                 {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </span>
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative text-muted-foreground hover:text-foreground"
-              title={`${notificationCount} unread notification${notificationCount === 1 ? '' : 's'}`}
-              onClick={() => setNotificationOpen(true)}
-            >
-              <Bell className="h-5 w-5" />
-              {notificationCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-destructive text-white text-[10px] leading-4 text-center font-medium af-scale-in ring-2 ring-background">
-                  {notificationCount > 99 ? '99+' : notificationCount}
-                </span>
-              )}
-            </Button>
+            <GlobalNotificationCenter
+              assets={assetsList}
+              invoices={invoicesList}
+              callLogs={callLogsList}
+              open={notificationOpen}
+              onOpenChange={setNotificationOpen}
+              onCountChange={setNotificationCount}
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative text-muted-foreground hover:text-foreground"
+                  title={`${notificationCount} unread notification${notificationCount === 1 ? '' : 's'}`}
+                >
+                  <Bell className="h-5 w-5" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-destructive text-white text-[10px] leading-4 text-center font-medium af-scale-in ring-2 ring-background">
+                      {notificationCount > 99 ? '99+' : notificationCount}
+                    </span>
+                  )}
+                </Button>
+              }
+            />
           </div>
         </header>
-        <GlobalNotificationCenter
-          assets={assetsList}
-          open={notificationOpen}
-          onOpenChange={setNotificationOpen}
-          onCountChange={setNotificationCount}
-        />
-
         {/* Page content: keyed so each page animates in */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-8">
-          <div key={currentPage} className="af-page mx-auto w-full max-w-[1500px]">
-            {renderPage()}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-7">
+          <div key={currentPage} className="af-page mx-auto w-full max-w-[1440px]">
+            <Suspense fallback={
+              <PageLoader label={`Loading ${currentLabel || 'page'}`} />
+            }>
+              {renderPage()}
+            </Suspense>
           </div>
         </main>
       </div>
@@ -483,9 +548,14 @@ function AppShell({ currentUserId, onLogout }: { currentUserId: string; onLogout
 type Phase =
   | { name: 'loading' }
   | { name: 'anon' }
-  | { name: 'ready'; userId: string }
+  | { name: 'ready'; user: User; companies: Company[] }
   | { name: 'blocked'; email: string }
   | { name: 'error'; message: string };
+
+const withTimeout = <T,>(promise: Promise<T>, label: string, ms = 20000) => Promise.race<T>([
+  promise,
+  new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error(`${label} timed out. Check your Supabase connection, then retry.`)), ms)),
+]);
 
 function FullScreenMessage({ children }: { children: React.ReactNode }) {
   return (
@@ -516,7 +586,14 @@ function AppGate() {
       }
       if (!cancelled) setPhase({ name: 'loading' });
       try {
-        await hydrate();
+        await withTimeout(hydrate(), 'Loading workspace data');
+        if (getCollection<AssetCategory>('asset-categories').length === 0) {
+          await replaceCollection<AssetCategory>('asset-categories', DEFAULT_ASSET_CATEGORIES);
+        }
+        for (const [collection, defaults] of Object.entries(MASTER_DATA_DEFAULTS)) {
+          if (getCollection<MasterDataOption>(collection).length === 0) await replaceCollection(collection, defaults);
+        }
+        if (getCollection<SystemPolicy>('system-policies').length === 0) await replaceCollection('system-policies', [DEFAULT_SYSTEM_POLICY]);
         const email = (session.user.email ?? '').toLowerCase();
         const users = getCollection<User>('users');
         let me = users.find(u => u.email.toLowerCase() === email);
@@ -529,15 +606,15 @@ function AppGate() {
             name: String(meta.full_name || email.split('@')[0]),
             email,
             department: '',
-            locationId: '',
-            role: 'admin',
+            siteId: '',
+            role: 'super_admin',
             phone: '',
             joinDate: new Date().toISOString().split('T')[0],
             status: 'active',
           };
           await replaceCollection<User>('users', [me]);
           // Make sure it really reached the database before continuing.
-          await hydrate();
+          await withTimeout(hydrate(), 'Refreshing workspace data');
           me = getCollection<User>('users').find(u => u.email.toLowerCase() === email);
           if (!me) throw new Error('The administrator account could not be saved. Check that the database migration has been applied.');
           if (meta.company_name) {
@@ -546,14 +623,21 @@ function AppGate() {
           }
         }
 
+        const companies=await withTimeout(loadCompanies(), 'Loading company access');
+        // IT access is separate from employee records. An invited site IT admin
+        // can sign in without being added to the employee directory.
+        if (!me && companies.length) {
+          const meta=session.user.user_metadata ?? {};
+          me={id:authId,name:String(meta.full_name||email.split('@')[0]),email,department:'IT',siteId:'',role:'manager',phone:'',joinDate:new Date().toISOString().slice(0,10),status:'active'};
+        }
         if (cancelled) return;
-        setPhase(me && me.status === 'active' ? { name: 'ready', userId: me.id } : { name: 'blocked', email });
+        setPhase(me && me.status === 'active' ? { name: 'ready', user: me, companies } : { name: 'blocked', email });
       } catch (e) {
         if (!cancelled) setPhase({ name: 'error', message: e instanceof Error ? e.message : String(e) });
       }
     };
 
-    supabase.auth.getSession().then(({ data }) => boot(data.session));
+    void withTimeout(supabase.auth.getSession(), 'Checking sign-in').then(({ data }) => boot(data.session)).catch(error => { if (!cancelled) setPhase({ name: 'error', message: error instanceof Error ? error.message : String(error) }); });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { void boot(session); });
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
   }, []);
@@ -566,12 +650,7 @@ function AppGate() {
 
   switch (phase.name) {
     case 'loading':
-      return (
-        <FullScreenMessage>
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-          <p className="mt-4 text-sm text-muted-foreground">Loading your workspace…</p>
-        </FullScreenMessage>
-      );
+      return <WorkspaceBoot />;
     case 'anon':
       return <Login />;
     case 'blocked':
@@ -599,7 +678,7 @@ function AppGate() {
         </FullScreenMessage>
       );
     case 'ready':
-      return <AppShell key={phase.userId} currentUserId={phase.userId} onLogout={logout} />;
+      return <AppShell key={`${phase.user.id}:${getActiveCompanyId()}`} currentUserId={phase.user.id} currentUserProfile={phase.user} companies={phase.companies} onLogout={logout} />;
   }
 }
 
@@ -613,7 +692,9 @@ async function flushAndSignOut() {
 export function App() {
   return (
     <>
-      <AppGate />
+      <ApplicationErrorBoundary>
+        <AppGate />
+      </ApplicationErrorBoundary>
       <Toaster richColors position="top-right" />
     </>
   );

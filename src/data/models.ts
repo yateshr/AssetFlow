@@ -1,10 +1,82 @@
+import { getCollection } from '@/lib/db';
+import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from './masterData';
+
 // Types
 export type AssetStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'disposed' | 'lost';
-export type AssetType = 'laptop' | 'desktop' | 'monitor' | 'phone' | 'tablet' | 'printer' | 'server' | 'accessory';
+export type AssetType = string;
+export interface AssetCategory { id: string; name: string; code?: string; active: boolean; }
 export type AssignmentStatus = 'active' | 'returned' | 'pending';
-export type InvoiceStatus = 'draft' | 'received' | 'partially-received' | 'paid' | 'partially-paid' | 'overdue' | 'cancelled';
-export type UserRole = 'admin' | 'manager' | 'user';
+export type InvoiceStatus = 'draft' | 'open' | 'received' | 'partially-received' | 'paid' | 'partially-paid' | 'overdue' | 'cancelled';
+export type UserRole = 'super_admin' | 'admin' | 'manager' | 'user';
 export type UserStatus = 'active' | 'inactive' | 'left';
+
+export interface Company {
+  id: string;
+  name: string;
+  legalName?: string;
+  code: string;
+  defaultCurrency: string;
+  timezone: string;
+  registeredAddress?: string;
+  registeredCountry?: string;
+  registeredState?: string;
+  registeredCity?: string;
+  billingAddress?: string;
+  taxId?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  primarySiteId?: string;
+  active: boolean;
+  accessRole?: string;
+}
+
+export interface CompanyAccessGrant {
+  id: string;
+  companyId: string;
+  email: string;
+  role: 'admin' | 'manager' | 'technician' | 'viewer';
+  siteId?: string;
+  active: boolean;
+}
+
+export interface TransferRequest {
+  id: string;
+  requestType: 'asset' | 'employee';
+  sourceCompanyId: string;
+  sourceSiteId?: string;
+  targetCompanyId: string;
+  targetSiteId?: string;
+  targetDepartment?: string;
+  entityId: string;
+  reason: string;
+  requestedAssetTag?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  requestedAt: string;
+  decisionNote?: string;
+}
+
+export interface SiteArea {
+  id: string;
+  siteId: string;
+  parentId?: string;
+  name: string;
+  type: 'building' | 'floor' | 'room' | 'zone' | 'rack';
+  code?: string;
+}
+
+export interface CompanySummary {
+  companyId: string;
+  companyName: string;
+  companyCode: string;
+  sites: number;
+  users: number;
+  assets: number;
+  assigned: number;
+  maintenance: number;
+  assetValue: number;
+  openCalls: number;
+  invoiceTotal: number;
+}
 
 export type AssetHistoryAction =
   | 'Purchased'
@@ -21,8 +93,8 @@ export type AssetHistoryAction =
   | 'Lost'
   | 'Found';
 export type ItCallStatus = 'open' | 'in-progress' | 'resolved' | 'closed';
-export type ItCallPriority = 'low' | 'medium' | 'high' | 'critical';
-export type ItCallCategory = 'hardware' | 'software' | 'network' | 'access' | 'asset-request' | 'other';
+export type ItCallPriority = string;
+export type ItCallCategory = string;
 
 export interface Asset {
   id: string;
@@ -42,7 +114,7 @@ export interface Asset {
   amcExpiry?: string;
   insuranceProvider?: string;
   insuranceExpiry?: string;
-  location: string;
+  siteId: string;
   assignedTo?: string;
   vendorId?: string;
   invoiceId?: string;
@@ -52,10 +124,11 @@ export interface Asset {
 
 export interface User {
   id: string;
+  employeeId?: string;
   name: string;
   email: string;
   department: string;
-  locationId: string;
+  siteId: string;
   role: UserRole;
   phone: string;
   joinDate: string;
@@ -72,7 +145,7 @@ export interface AssetHistoryEvent {
   from?: string;
   to?: string;
   userId?: string;
-  locationId?: string;
+  siteId?: string;
   reason?: string;
   notes?: string;
   cost?: number;
@@ -86,9 +159,15 @@ export interface Location {
   id: string;
   name: string;
   address: string;
-  type: 'office' | 'warehouse' | 'remote';
+  type: string;
   capacity: number;
   manager: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  siteCode?: string;
+  building?: string;
+  timezone?: string;
 }
 
 export interface Vendor {
@@ -98,7 +177,7 @@ export interface Vendor {
   email: string;
   phone: string;
   website: string;
-  category: string;
+  category?: string; // legacy; vendors can supply both hardware and software, so it is no longer asked for
   address?: string;
   taxId?: string;
   currency?: string;
@@ -123,6 +202,7 @@ export interface InvoiceLineItem {
   quantity: number;
   unitPrice: number;
   taxRate: number;
+  unit?: string;
   assetType?: AssetType;
   manufacturer?: string;
   model?: string;
@@ -132,14 +212,19 @@ export interface InvoiceLineItem {
 export interface Invoice {
   id: string;
   vendorId: string;
+  siteId?: string;
   invoiceNumber: string;
   invoiceDate: string;
   dueDate?: string;
   currency: string;
   paymentTerms?: string;
   poNumber?: string;
+  poDate?: string;
   status: InvoiceStatus;
   notes?: string;
+  attachmentName?: string;
+  attachmentType?: string;
+  attachmentDataUrl?: string;
   subtotal: number;
   taxTotal: number;
   total: number;
@@ -168,7 +253,7 @@ export interface SoftwareLicense {
   name: string;
   vendor: string;
   licenseKey: string;
-  type: 'perpetual' | 'subscription';
+  type: string;
   totalSeats: number;
   usedSeats: number;
   expiryDate: string;
@@ -189,31 +274,37 @@ export interface MaintenanceRecord {
 
 export interface ItCallLog {
   id: string;
+  siteId?: string;
   date: string;
   time: string;
+  employeeNumber?: string;
   callerName: string;
   department: string;
   contactNumber: string;
   category: ItCallCategory;
   priority: ItCallPriority;
   issue: string;
+  troubleshooting?: string;
   assetTag?: string;
   assignedTo: string;
   status: ItCallStatus;
   resolution?: string;
+  resolutionDate?: string;
   closedAt?: string;
 }
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
+  const policy=getCollection<SystemPolicy>('system-policies')[0]||DEFAULT_SYSTEM_POLICY;
+  return new Intl.NumberFormat(policy.locale, {
     style: 'currency',
-    currency: 'INR',
+    currency: policy.defaultCurrency,
     maximumFractionDigits: 2
   }).format(amount);
 }
 
 export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  const policy=getCollection<SystemPolicy>('system-policies')[0]||DEFAULT_SYSTEM_POLICY;
+  return new Date(dateString).toLocaleDateString(policy.locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
@@ -221,12 +312,14 @@ export function formatDate(dateString: string): string {
 }
 
 export function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-US', {
+  const policy=getCollection<SystemPolicy>('system-policies')[0]||DEFAULT_SYSTEM_POLICY;
+  return new Date(dateString).toLocaleString(policy.locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: policy.timezone || undefined
   });
 }
 

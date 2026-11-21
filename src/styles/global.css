@@ -42,40 +42,40 @@
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.975 0.004 270);
-  --foreground: oklch(0.2 0.02 270);
+  --radius: 0.5rem;
+  --background: oklch(0.972 0.004 255);
+  --foreground: oklch(0.205 0.018 255);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.2 0.02 270);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.2 0.02 270);
-  --primary: oklch(0.54 0.21 272);
+  --primary: oklch(0.49 0.16 252);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.955 0.012 270);
+  --secondary: oklch(0.95 0.008 255);
   --secondary-foreground: oklch(0.25 0.02 270);
-  --muted: oklch(0.955 0.008 270);
-  --muted-foreground: oklch(0.52 0.025 270);
-  --accent: oklch(0.95 0.025 272);
-  --accent-foreground: oklch(0.35 0.12 272);
+  --muted: oklch(0.945 0.006 255);
+  --muted-foreground: oklch(0.48 0.02 255);
+  --accent: oklch(0.93 0.018 252);
+  --accent-foreground: oklch(0.31 0.09 252);
   --destructive: oklch(0.58 0.23 25);
-  --border: oklch(0.92 0.008 270);
-  --input: oklch(0.9 0.01 270);
-  --ring: oklch(0.54 0.21 272);
+  --border: oklch(0.89 0.008 255);
+  --input: oklch(0.86 0.01 255);
+  --ring: oklch(0.49 0.16 252);
   --chart-1: oklch(0.57 0.21 272);
   --chart-2: oklch(0.7 0.15 165);
   --chart-3: oklch(0.74 0.16 60);
   --chart-4: oklch(0.65 0.22 330);
   --chart-5: oklch(0.8 0.15 95);
-  --sidebar: oklch(0.99 0.003 270);
-  --sidebar-foreground: oklch(0.25 0.02 270);
+  --sidebar: oklch(0.205 0.025 255);
+  --sidebar-foreground: oklch(0.91 0.01 255);
   --sidebar-primary: oklch(0.54 0.21 272);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.95 0.025 272);
-  --sidebar-accent-foreground: oklch(0.35 0.12 272);
-  --sidebar-border: oklch(0.93 0.008 270);
+  --sidebar-accent: oklch(1 0 0 / 9%);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.54 0.21 272);
-  --shadow-soft: 0 1px 2px oklch(0.2 0.05 270 / 0.04), 0 4px 16px -4px oklch(0.2 0.05 270 / 0.08);
-  --shadow-lift: 0 2px 4px oklch(0.2 0.05 270 / 0.05), 0 16px 32px -8px oklch(0.35 0.15 272 / 0.18);
+  --shadow-soft: 0 1px 2px oklch(0.2 0.03 255 / 0.05);
+  --shadow-lift: 0 4px 12px oklch(0.2 0.03 255 / 0.1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -126,6 +126,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
   button:not(:disabled),
@@ -177,16 +178,25 @@
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
+@keyframes af-loader-pulse {
+  0%, 100% { transform: scaleY(0.55); opacity: 0.45; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes af-boot-progress {
+  0% { transform: translateX(-100%) scaleX(0.35); }
+  55% { transform: translateX(25%) scaleX(0.55); }
+  100% { transform: translateX(220%) scaleX(0.35); }
+}
 
-.af-page { animation: af-fade-up 0.5s var(--ease-out-expo) backwards; }
-.af-fade-in { animation: af-fade-in 0.4s ease both; }
-.af-scale-in { animation: af-scale-in 0.4s var(--ease-out-expo) both; }
+.af-page { animation: af-fade-in 0.18s ease-out both; }
+.af-fade-in { animation: af-fade-in 0.18s ease-out both; }
+.af-scale-in { animation: af-scale-in 0.2s var(--ease-out-expo) both; }
 .af-bar { transform-origin: left; animation: af-grow-x 0.9s var(--ease-out-expo) both; animation-delay: 0.25s; }
 
 /* Staggered entrance: children animate in sequence */
 .af-stagger > * {
-  animation: af-fade-up 0.55s var(--ease-out-expo) backwards;
-  animation-delay: calc(var(--i, 0) * 60ms);
+  animation: af-fade-in 0.16s ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 18ms);
 }
 .af-stagger > *:nth-child(1) { --i: 0; }
 .af-stagger > *:nth-child(2) { --i: 1; }
@@ -203,11 +213,9 @@
   transition: transform 0.35s var(--ease-out-expo), box-shadow 0.35s var(--ease-out-expo), border-color 0.2s ease;
 }
 .af-lift:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-lift);
-  border-color: color-mix(in oklch, var(--primary) 30%, var(--border));
+  border-color: color-mix(in oklch, var(--primary) 25%, var(--border));
 }
-.af-lift:active { transform: translateY(-1px) scale(0.995); }
+.af-lift:active { transform: none; }
 
 /* Glass surface for sticky headers */
 .af-glass {
@@ -228,13 +236,24 @@
   background-size: 200% 100%;
   animation: af-shimmer 1.4s linear infinite;
 }
+.af-loader-bar { transform-origin: center; animation: af-loader-pulse 0.9s ease-in-out infinite; }
+.af-boot-progress { width: 45%; transform-origin: left; animation: af-boot-progress 1.6s ease-in-out infinite; }
 
 /* Subtle ambient backdrop behind app content */
 .af-ambient {
-  background:
-    radial-gradient(60rem 30rem at 85% -10%, color-mix(in oklch, var(--primary) 9%, transparent), transparent 70%),
-    radial-gradient(40rem 24rem at -5% 105%, color-mix(in oklch, var(--chart-4) 6%, transparent), transparent 70%),
-    var(--background);
+  background: var(--background);
+}
+
+.af-page > .space-y-6,
+.af-page > .space-y-8 { gap: 1.25rem; }
+.af-page { min-width: 0; max-width: 100%; }
+.af-page h1 { font-size: 1.625rem; line-height: 2rem; letter-spacing: -0.025em; font-weight: 650; }
+.af-page h1 + p { margin-top: 0.25rem; font-size: 0.875rem; }
+
+@media (max-width: 639px) {
+  .af-page h1 { font-size: 1.375rem; line-height: 1.75rem; }
+  .af-page > .space-y-6,
+  .af-page > .space-y-8 { gap: 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

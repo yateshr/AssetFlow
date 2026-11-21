@@ -32,6 +32,7 @@ import {
 } from '@/data/models';
 import type { Page } from './App';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
 interface DashboardProps {
   onNavigate: (page: Page) => void;
@@ -41,12 +42,28 @@ interface DashboardProps {
   onAssetDrilldown?: (filter: { status?: AssetStatus; warranty?: 'expired'|'30'|'60'|'90'; type?: Asset['type'] }) => void;
 }
 
+function AttentionItem({ label, value, tone, onClick }: { label: string; value: number; tone: 'danger' | 'warning' | 'neutral'; onClick: () => void }) {
+  const toneClass = tone === 'danger'
+    ? 'border-destructive/25 bg-destructive/5 text-destructive'
+    : tone === 'warning'
+      ? 'border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+      : 'border-border bg-background text-foreground';
+  return (
+    <button type="button" onClick={onClick} className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${toneClass}`}>
+      <span className="text-sm font-medium">{label}</span>
+      <span className="text-lg font-bold">{value}</span>
+    </button>
+  );
+}
+
 export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignmentsList = [], onAssetDrilldown }: DashboardProps) {
   const [locations] = useCollection<Location>('locations');
   const [auditLogs] = useCollection<AuditLog>('audit-logs');
   const [history] = useCollection<AssetHistoryEvent>('history');
   const [itCallLogs] = useCollection<ItCallLog>('call-logs');
   const [softwareLicenses] = useCollection<SoftwareLicense>('licenses');
+  const [policies]=useCollection<SystemPolicy>('system-policies');
+  const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const maintenanceRecords: { status?: string }[] = (() => {
     try { return JSON.parse(kv.getItem('assetflow-maintenance') || '[]'); } catch { return []; }
   })();
@@ -63,13 +80,16 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
   const today = new Date().toISOString().split('T')[0];
   const todaysCalls = itCallLogs.filter(call => call.date === today).length;
   const openCalls = itCallLogs.filter(call => call.status === 'open' || call.status === 'in-progress').length;
+  const criticalOpenCalls = itCallLogs.filter(call => call.priority === 'critical' && (call.status === 'open' || call.status === 'in-progress')).length;
+  const lostAssets = assets.filter(asset => asset.status === 'lost').length;
+  const pendingAssignments = assignments.filter(assignment => assignment.status === 'pending').length;
 
   // Asset status distribution
   const statusData = [
-    { name: 'Assigned', value: assignedAssets, color: 'var(--chart-1)' },
+    { name: 'Assigned', value: assignedAssets, color: 'var(--primary)' },
     { name: 'Available', value: availableAssets, color: 'var(--chart-2)' },
-    { name: 'Maintenance', value: maintenanceAssets, color: 'var(--chart-3)' },
-    { name: 'Retired', value: retiredAssets, color: 'var(--chart-4)' },
+    { name: 'Maintenance', value: maintenanceAssets, color: 'var(--chart-5)' },
+    { name: 'Retired', value: retiredAssets, color: 'var(--muted-foreground)' },
   ];
 
   // Asset type distribution
@@ -88,9 +108,9 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
     'var(--chart-5)', 'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)',
   ];
 
-  // Warranty alerts (expiring within 90 days)
+  // Warranty alerts use the organization policy.
   const now = new Date();
-  const ninetyDaysFromNow = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const ninetyDaysFromNow = new Date(now.getTime() + policy.warrantyAlertDays * 24 * 60 * 60 * 1000);
   const warrantyAlerts = assets.filter(a => {
     const expiry = new Date(a.warrantyExpiry);
     return expiry <= ninetyDaysFromNow && expiry > now;
@@ -98,6 +118,11 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
 
   // Expired warranties
   const expiredWarranties = assets.filter(a => new Date(a.warrantyExpiry) <= now);
+  const coverageExpiring = assets.filter(asset => [asset.amcExpiry, asset.insuranceExpiry].some(value => {
+    if (!value) return false;
+    const expiry = new Date(value);
+    return expiry > now && expiry <= ninetyDaysFromNow;
+  })).length;
 
   // License utilization
   const licenseUtilization = softwareLicenses.map(l => ({
@@ -148,12 +173,12 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-primary">{greeting} 👋</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">IT operations overview</p>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">Overview of your IT asset management system</p>
+        <p className="text-muted-foreground">{greeting}. Review inventory, support activity, and items requiring attention.</p>
       </div>
 
       {/* First-run guidance */}
@@ -173,29 +198,34 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
       )}
 
       {/* Stats Grid */}
-      <div className="af-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map(({ label, value, icon: Icon, tone, note, onClick }) => (
-          <Card key={label} className="af-lift group relative cursor-pointer overflow-hidden" onClick={onClick}>
-            <div
-              className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full opacity-[0.12] blur-2xl transition-opacity duration-500 group-hover:opacity-30"
-              style={{ background: `var(--${tone})` }}
-            />
+          <Card key={label} className="group cursor-pointer transition-colors hover:border-primary/30" onClick={onClick}>
             <CardHeader className="flex flex-row items-center justify-between pb-0">
               <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-              <div
-                className="h-10 w-10 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
-                style={{ background: `color-mix(in oklch, var(--${tone}) 16%, transparent)`, color: `var(--${tone})` }}
-              >
-                <Icon className="h-5 w-5" />
-              </div>
+              <Icon className="h-[18px] w-[18px]" style={{ color: `var(--${tone})` }} />
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold tracking-tight text-foreground"><CountUp value={value} /></div>
+              <div className="text-[30px] leading-9 font-semibold tracking-[-0.03em] text-foreground"><CountUp value={value} /></div>
               <p className="text-xs text-muted-foreground mt-2">{note}</p>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <Card className="border-amber-500/30 bg-amber-500/[0.04]">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" />Needs Attention</CardTitle>
+          <p className="text-sm text-muted-foreground">Operational exceptions that may need an IT team response.</p>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <AttentionItem label="Under repair" value={maintenanceAssets} tone="warning" onClick={() => onAssetDrilldown?.({ status: 'maintenance' })} />
+          <AttentionItem label="Critical IT calls" value={criticalOpenCalls} tone="danger" onClick={() => onNavigate('call-logs')} />
+          <AttentionItem label="Expired warranties" value={expiredWarranties.length} tone="danger" onClick={() => onAssetDrilldown?.({ warranty: 'expired' })} />
+          <AttentionItem label="Coverage expiring" value={coverageExpiring} tone="warning" onClick={() => onNavigate('reports')} />
+          <AttentionItem label={lostAssets ? 'Lost assets' : 'Pending assignments'} value={lostAssets || pendingAssignments} tone={lostAssets ? 'danger' : 'neutral'} onClick={() => lostAssets ? onAssetDrilldown?.({ status: 'lost' }) : onNavigate('assignments')} />
+        </CardContent>
+      </Card>
 
       {/* Charts Row */}
       <div className="af-stagger grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -210,6 +240,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
                 <PieChart>
                   <Pie
                     data={statusData}
+                    isAnimationActive={false}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
@@ -252,7 +283,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
                   <XAxis type="number" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" width={80} />
                   <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={18}>
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={18} isAnimationActive={false}>
                     {typeData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
@@ -409,7 +440,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">{locations.length}</p>
-              <p className="text-sm text-muted-foreground">Locations</p>
+              <p className="text-sm text-muted-foreground">Sites</p>
             </div>
           </CardContent>
         </Card>

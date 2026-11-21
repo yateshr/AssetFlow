@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getCollection } from '@/lib/db';
+import { exportExcelReport } from '@/lib/reportExport';
 import { type AuditLog, type AssetHistoryEvent, type User as UserRecord, type Asset, formatDateTime } from '@/data/models';
 
 interface AuditLogsPageProps {
@@ -69,15 +70,7 @@ export function AuditLogsPage({ history = [], usersList = [], assetsList = [] }:
   ];
   const complianceScore = Math.round(compliance.reduce((s,c) => s+c.value, 0) / compliance.length);
 
-  const handleExport = () => {
-    const escape = (v:string) => `"${v.replaceAll('"','""')}"`;
-    const csv = [
-      ['Timestamp','Action','Entity Type','Entity ID','Entity Name','User','Source','Details'].map(escape).join(','),
-      ...filteredLogs.map(log => [log.timestamp,log.action,log.entityType,log.entityId,log.entityName,log.userName,log.source || 'system',log.details].map(escape).join(','))
-    ].join('\n');
-    const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-    const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='assetflow-audit-compliance.csv'; a.click(); URL.revokeObjectURL(url);
-  };
+  const handleExport = () => exportExcelReport({title:'AssetFlow Audit & Compliance Report',subtitle:`${filteredLogs.length} filtered event(s)`,generatedBy:'AssetFlow',sections:[{title:'Audit Event Timeline',headers:['Timestamp','Action','Entity Type','Entity ID','Entity Name','User','Source','Details'],rows:filteredLogs.map(log=>[log.timestamp,log.action,log.entityType,log.entityId,log.entityName,log.userName,log.source||'system',log.details])}]},`assetflow-audit-compliance-${new Date().toISOString().slice(0,10)}.xlsx`);
 
   const getEntityIcon = (entityType:string) => {
     switch(entityType) {
