@@ -5,9 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Asset, Invoice, ItCallLog } from '@/data/models';
+import { buildExpiryAlerts, describeDays } from '@/lib/alerts';
+import type { SoftwareLicense, Vendor } from '@/data/models';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
 type Notice = {
+  target?: string;
   id: string;
   title: string;
   detail: string;
@@ -19,6 +22,8 @@ interface Props {
   assets: Asset[];
   invoices: Invoice[];
   callLogs: ItCallLog[];
+  vendors?: Vendor[];
+  onViewAll?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCountChange?: (count: number) => void;
@@ -27,9 +32,10 @@ interface Props {
 
 const readKey = 'assetflow-notifications-read';
 
-export function GlobalNotificationCenter({ assets, invoices, callLogs, open, onOpenChange, onCountChange, trigger }: Props) {
+export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors = [], onViewAll, open, onOpenChange, onCountChange, trigger }: Props) {
   const [policies]=useCollection<SystemPolicy>('system-policies');
   const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
+  const [licenses]=useCollection<SoftwareLicense>('licenses');
   const [read, setRead] = useState<Record<string, boolean>>({});
 
   const loadRead = () => {
@@ -49,22 +55,16 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, open, onO
     const result: Notice[] = [];
     const now = Date.now();
 
-    assets.forEach(asset => {
-      const expiry = new Date(asset.warrantyExpiry).getTime();
-      if (Number.isFinite(expiry)) {
-        const days = Math.ceil((expiry - now) / 86400000);
-        if (days <= policy.warrantyAlertDays) {
-          result.push({
-            id: `warranty-${asset.id}`,
-            title: days < 0 ? 'Warranty expired' : 'Warranty expiring soon',
-            detail: `${asset.assetTag} • ${asset.name} • ${days < 0 ? `${Math.abs(days)} days overdue` : `${days} days remaining`}`,
-            severity: days < 0 ? 'critical' : 'warning',
-            createdAt: asset.warrantyExpiry,
-          });
-        }
-      }
+    buildExpiryAlerts({ assets, licenses, vendors, invoices, policy, now: new Date(now) }).forEach(alert => {
+      result.push({
+        id: alert.id,
+        title: alert.title,
+        detail: `${alert.subject} • ${alert.date ? describeDays(alert.days) : alert.detail}`,
+        severity: alert.severity,
+        createdAt: alert.date || new Date(now).toISOString(),
+        target: alert.target,
+      });
     });
-    invoices.forEach(invoice=>{const due=new Date(invoice.dueDate||'').getTime();const outstanding=invoice.total-invoice.amountPaid;if(Number.isFinite(due)&&due<now&&outstanding>0&&!['paid','cancelled'].includes(invoice.status))result.push({id:`invoice-${invoice.id}`,title:'Invoice payment overdue',detail:`${invoice.invoiceNumber} • outstanding ${outstanding.toFixed(2)}`,severity:'warning',createdAt:invoice.dueDate||invoice.invoiceDate});});
     callLogs.filter(call=>call.priority==='critical'&&['open','in-progress'].includes(call.status)).forEach(call=>result.push({id:`call-${call.id}`,title:'Critical IT call open',detail:`${call.callerName} • ${call.issue}`,severity:'critical',createdAt:call.date}));
 
     try {
@@ -129,7 +129,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, open, onO
     } catch {}
 
     return result;
-  }, [assets, invoices, callLogs, read, open, policy.warrantyAlertDays]);
+  }, [assets, invoices, callLogs, licenses, vendors, read, open, policy.warrantyAlertDays, policy.licenseAlertDays]);
 
   const unread = notifications.filter(n => !read[n.id]).length;
 
@@ -160,7 +160,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, open, onO
             {unread > 0 && <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">{unread} unread</Badge>}
           </div>
           <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-            Warranty, invoice, IT call, maintenance, stock, and infrastructure alerts.
+            Warranty, AMC, insurance, license, contract, invoice, IT call, stock, and infrastructure alerts.
           </p>
         </div>
 
@@ -201,6 +201,11 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, open, onO
 
         <div className="flex items-center justify-between border-t px-2.5 py-1.5">
           <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={markAllRead} disabled={unread === 0}>Mark all read</Button>
+          {onViewAll && (
+            <Button size="sm" variant="ghost" className="h-7 text-[11px] text-primary" onClick={onViewAll}>
+              View all expiry alerts
+            </Button>
+          )}
           <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => onOpenChange(false)}>
             <X className="h-3.5 w-3.5" /> Close
           </Button>

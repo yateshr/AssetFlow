@@ -9,7 +9,7 @@
  *
  * Access control is enforced by Row Level Security (see supabase/migrations).
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { supabase } from './supabase';
 import type { Company, CompanyAccessGrant, CompanySummary, TransferRequest } from '@/data/models';
@@ -246,9 +246,28 @@ function saveDiff<T extends Doc>(collection: string, prev: T[], next: T[]) {
 // ---------------------------------------------------------------- React hook
 type Updater<T> = T[] | ((prev: T[]) => T[]);
 
+// Components using the same collection stay in sync: a change made anywhere is
+// pushed to every other mounted hook for that collection.
+type Subscriber = (items: unknown[]) => void;
+const subscribers = new Map<string, Set<Subscriber>>();
+
+function publish(collection: string, items: unknown[], except: Subscriber) {
+  subscribers.get(collection)?.forEach(fn => { if (fn !== except) fn(items); });
+}
+
 export function useCollection<T extends Doc>(collection: string): [T[], (value: Updater<T>) => void] {
   const [list, setList] = useState<T[]>(() => getCollection<T>(collection));
   const latest = useRef(list);
+  const self = useRef<Subscriber>(() => {});
+
+  useEffect(() => {
+    self.current = (items: unknown[]) => { latest.current = items as T[]; setList(items as T[]); };
+    const fn = self.current;
+    let set = subscribers.get(collection);
+    if (!set) subscribers.set(collection, (set = new Set()));
+    set.add(fn);
+    return () => { set!.delete(fn); };
+  }, [collection]);
 
   const update = useCallback(
     (value: Updater<T>) => {
@@ -258,6 +277,7 @@ export function useCollection<T extends Doc>(collection: string): [T[], (value: 
       latest.current = next;
       setList(next);
       saveDiff(collection, prev, next);
+      publish(collection, next, self.current);
     },
     [collection]
   );

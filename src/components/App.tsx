@@ -17,6 +17,7 @@ import {
   Settings,
   LogOut,
   Bell,
+  CalendarClock,
   Menu,
   X,
   Database,
@@ -52,6 +53,7 @@ import { eraseAllData, loadDemoData } from '@/lib/demo';
 import { ShieldAlert } from 'lucide-react';
 import { PageLoader, WorkspaceBoot } from '@/components/ui/loading';
 
+const ExpiryCenterPage = lazy(() => import('./ExpiryCenterPage').then(module => ({ default: module.ExpiryCenterPage })));
 const Dashboard = lazy(() => import('./Dashboard').then(module => ({ default: module.Dashboard })));
 const AssetsPage = lazy(() => import('./AssetsPage').then(module => ({ default: module.AssetsPage })));
 const UsersPage = lazy(() => import('./UsersPage').then(module => ({ default: module.UsersPage })));
@@ -68,7 +70,7 @@ const DataManagementPage = lazy(() => import('./DataManagementPage').then(module
 const SettingsWithOrganizationPage = lazy(() => import('./SettingsWithOrganizationPage').then(module => ({ default: module.SettingsWithOrganizationPage })));
 const TransferApprovalsPage = lazy(() => import('./TransferApprovalsPage').then(module => ({ default: module.TransferApprovalsPage })));
 
-export type Page = 'dashboard' | 'reports' | 'assets' | 'operations' | 'call-logs' | 'users' | 'locations' | 'vendors' | 'invoices' | 'assignments' | 'audit-logs' | 'licenses' | 'settings' | 'data-tools' | 'transfer-approvals';
+export type Page = 'dashboard' | 'reports' | 'assets' | 'operations' | 'call-logs' | 'users' | 'locations' | 'vendors' | 'invoices' | 'assignments' | 'audit-logs' | 'licenses' | 'expiry' | 'settings' | 'data-tools' | 'transfer-approvals';
 
 type DepartmentRecord = { id: string; name: string; siteId?: string };
 
@@ -160,6 +162,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
       label: 'Overview',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'expiry', label: 'Expiry & Alerts', icon: CalendarClock },
         { id: 'reports', label: 'Reports', icon: BarChart3 },
       ],
     },
@@ -322,6 +325,8 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
         );
       case 'audit-logs':
         return <AuditLogsPage history={assetHistory} usersList={usersList} assetsList={assetsList} />;
+      case 'expiry':
+        return <ExpiryCenterPage assetsList={assetsList} invoicesList={invoicesList} vendorsList={vendorsList} onNavigate={setCurrentPage} />;
       case 'licenses':
         return <LicensesPage />;
       case 'settings':
@@ -506,6 +511,8 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
               assets={assetsList}
               invoices={invoicesList}
               callLogs={callLogsList}
+              vendors={vendorsList}
+              onViewAll={() => { setNotificationOpen(false); setCurrentPage('expiry'); }}
               open={notificationOpen}
               onOpenChange={setNotificationOpen}
               onCountChange={setNotificationCount}
