@@ -1,4 +1,8 @@
 import { getCollection } from '@/lib/db';
+import { masterLabel } from '@/lib/masterLabel';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { toast } from 'sonner';
+import { ExportMenu } from '@/components/ExportMenu';
 import { useCollection } from '@/lib/db';
 import type { MasterDataOption } from '@/data/masterData';
 import { useState } from 'react';
@@ -49,20 +53,20 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
       warehouse: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
       remote: 'bg-muted text-muted-foreground border-muted'
     };
-    return variants[type as keyof typeof variants];
+    return variants[type as keyof typeof variants] || 'bg-muted text-muted-foreground border-muted';
   };
 
   const getAssetCount = (siteId: string) => {
     return getCollection<Asset>('assets').filter(a => a.siteId === siteId).length;
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const assetCount = getAssetCount(id);
     if (assetCount > 0) {
-      alert(`Cannot delete location. ${assetCount} asset(s) are assigned to this location.`);
+      toast.error(`Cannot delete location. ${assetCount} asset(s) are assigned to this location.`);
       return;
     }
-    if (confirm('Are you sure you want to delete this location?')) {
+    if (await confirmDialog({ title: 'Delete site?', message: 'Are you sure you want to delete this site?', destructive: true })) {
       onSitesChange(sitesList.filter(l => l.id !== id));
     }
   };
@@ -75,10 +79,17 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Sites</h1>
           <p className="text-muted-foreground">Manage offices, plants, warehouses and facilities</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ExportMenu disabled={filteredLocations.length === 0} build={() => ({
+          name: 'sites', sheet: 'Sites',
+          headers: ['Site Code', 'Name', 'Type', 'Address', 'Building', 'City', 'State', 'Country', 'Timezone', 'Manager', 'Capacity'],
+          rows: filteredLocations.map(l => [l.siteCode || '', l.name, masterLabel('location-types', l.type), l.address, l.building || '', l.city || '', l.state || '', l.country || '', l.timezone || '', l.manager, l.capacity]),
+        })} />
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Site
         </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -128,7 +139,7 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
                         <h3 className="font-semibold text-foreground">{location.name}</h3>
                         {(location.city || location.country) && <p className="text-xs text-muted-foreground">{[location.city,location.state,location.country].filter(Boolean).join(', ')}</p>}
                         <Badge variant="outline" className={getTypeBadge(location.type)}>
-                          {location.type}
+                          {masterLabel('location-types', location.type)}
                         </Badge>
                       </div>
                     </div>

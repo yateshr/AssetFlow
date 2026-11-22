@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Activity, AlertTriangle, Boxes, CheckCircle2, CircleDollarSign, Laptop, Network, Package, RefreshCw, ShieldAlert, Users, Wrench } from 'lucide-react';
+import { CurrencyIcon } from '@/components/CurrencyIcon';
+import { Activity, AlertTriangle, Boxes, CheckCircle2, Laptop, Network, Package, RefreshCw, ShieldAlert, Users, Wrench } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,7 @@ export function ManagementDashboard({ assets, users, onNavigate }: ManagementDas
     ['IT Stock', assets.filter(a => a.status === 'available' && !a.assignedTo).length, Boxes],
     ['Under Repair', assets.filter(a => a.status === 'maintenance').length, Wrench],
     ['Lost', assets.filter(a => a.status === 'lost').length, AlertTriangle],
-    ['Asset Value', formatCurrency(value), CircleDollarSign],
+    ['Asset Value', formatCurrency(value), CurrencyIcon],
     ['Employees', users.filter(u => u.status === 'active').length, Users],
     [`Warranty ≤${policy.warrantyAlertDays}d`, warranty90, ShieldAlert],
   ] as const;

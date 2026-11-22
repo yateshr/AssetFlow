@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, ArrowRightLeft, CheckCircle, XCircle, Clock, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -141,10 +142,17 @@ export function AssignmentsPage({
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Assignments</h1>
           <p className="text-muted-foreground">Track asset check-out and check-in to employees</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ExportMenu disabled={filteredAssignments.length === 0} build={() => ({
+          name: 'assignments', sheet: 'Assignments',
+          headers: ['Asset', 'Employee', 'Assigned Date', 'Return Date', 'Status', 'Notes'],
+          rows: filteredAssignments.map(a => [a.assetName, a.userName, a.assignedDate, a.returnDate || '', a.status, a.notes || '']),
+        })} />
         <Button onClick={() => setShowAssignModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Assign Asset
         </Button>
+        </div>
       </div>
 
       {/* Stats */}

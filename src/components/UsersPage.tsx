@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { toast } from 'sonner';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft } from 'lucide-react';
 import { getActiveCompanyId, listTransferLocations, requestTransfer, transferEmployee } from '@/lib/db';
 import { Button } from '@/components/ui/button';
@@ -75,12 +78,12 @@ export function UsersPage({
     return matchesSearch;
   });
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (id === currentUserId) {
-      alert('You cannot delete the account you are currently signed in with.');
+      toast.error('You cannot delete the account you are currently signed in with.');
       return;
     }
-    if (confirm('Are you sure you want to delete this user?')) {
+    if (await confirmDialog({ title: 'Delete employee?', message: 'Are you sure you want to delete this employee?', destructive: true })) {
       onUsersChange(usersList.filter(u => u.id !== id));
     }
   };
@@ -93,10 +96,17 @@ export function UsersPage({
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Employees</h1>
           <p className="text-muted-foreground">Manage employee records, departments and assigned sites. Portal access is managed separately for IT staff.</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ExportMenu disabled={filteredUsers.length === 0} build={() => ({
+          name: 'employees', sheet: 'Employees',
+          headers: ['Employee ID', 'Name', 'Email', 'Phone', 'Department', 'Site', 'Role', 'Status', 'Join Date'],
+          rows: filteredUsers.map(u => [u.employeeId || u.id, u.name, u.email, u.phone, u.department, sitesList.find(l => l.id === u.siteId)?.name || u.siteId, u.role, u.status, u.joinDate]),
+        })} />
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Employee
         </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -598,7 +608,7 @@ export function UsersPage({
               if (editingUser) {
                 if (data.status === 'left' && editingUser.status !== 'left') {
                   if (editingUser.id === currentUserId) {
-                    alert('You cannot mark the account you are currently signed in with as Left Company.');
+                    toast.error('You cannot mark the account you are currently signed in with as Left Company.');
                     return;
                   }
                   setShowCreateModal(false);

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { confirmDialog } from '@/components/ConfirmHost';
 import { Database, Trash2, FlaskConical, AlertTriangle, ShieldAlert, Upload, Download, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,7 @@ export function DataManagementPage({ isAdmin, onLoadDemoData, onEraseAllData }: 
   const [preview, setPreview] = useState<WorkbookImport | null>(null);
 
   const run = async (kind: 'demo' | 'erase', fn: () => Promise<void>, message: string) => {
-    if (!window.confirm(message)) return;
+    if (!(await confirmDialog({ title: kind === 'erase' ? 'Erase all data?' : 'Load demo data?', message, destructive: kind === 'erase', confirmLabel: kind === 'erase' ? 'Erase everything' : 'Load demo data' }))) return;
     setBusy(kind);
     try {
       await fn();
@@ -47,7 +48,7 @@ export function DataManagementPage({ isAdmin, onLoadDemoData, onEraseAllData }: 
   };
 
   const importPreview = async () => {
-    if (!preview || !window.confirm('Import these reviewed records into AssetFlow? Existing records with the same IDs will be updated.')) return;
+    if (!preview || !(await confirmDialog({ title: 'Import records?', message: 'Import these reviewed records into AssetFlow? Existing records with the same IDs will be updated.', confirmLabel: 'Import' }))) return;
     setImportBusy(true);
     try {
       const { applyWorkbookImport } = await import('@/lib/workbookImport');

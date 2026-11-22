@@ -1,4 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { ConfirmHost } from '@/components/ConfirmHost';
+import { CurrencyIcon } from '@/components/CurrencyIcon';
 import type { Session } from '@supabase/supabase-js';
 import { 
   LayoutDashboard, 
@@ -9,7 +11,6 @@ import {
   Building2,
   MapPin, 
   Truck, 
-  Receipt,
   ArrowRightLeft, 
   FileText, 
   Headphones,
@@ -176,7 +177,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
         { id: 'assets', label: 'Assets', icon: Package },
         { id: 'assignments', label: 'Assignments', icon: ArrowRightLeft },
         { id: 'licenses', label: 'Licenses', icon: Key },
-        { id: 'invoices', label: 'Invoices', icon: Receipt },
+        { id: 'invoices', label: 'Invoices', icon: CurrencyIcon },
       ],
     },
     {
@@ -709,6 +710,7 @@ export function App() {
         <AppGate />
       </ApplicationErrorBoundary>
       <Toaster richColors position="top-right" />
+      <ConfirmHost />
     </>
   );
 }

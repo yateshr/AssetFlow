@@ -21,13 +21,14 @@ let activeCompanyId: string | null = null;
 
 export function getActiveCompanyId() { return activeCompanyId; }
 
-export type AssetTagSiteSeries = { id: string; siteId: string; companyPrefix: string; functionPrefix: string; series: string; nextNumber: number; digits: number; active: boolean };
+export type TagSeparator = '-' | '.' | '_' | '/' | '';
+export type AssetTagSiteSeries = { id: string; siteId: string; companyPrefix: string; functionPrefix: string; series: string; nextNumber: number; digits: number; active: boolean; separator: TagSeparator; useFunctionPrefix: boolean };
 
 export async function loadAssetTagSiteSeries(companyId = getActiveCompanyId()): Promise<AssetTagSiteSeries[]> {
   if (!companyId) return [];
   const { data, error } = await client().rpc('assetflow_list_asset_tag_site_series', { p_company_id: companyId });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row: any) => ({ id: row.id, siteId: row.site_id, companyPrefix: row.company_prefix, functionPrefix: row.function_prefix, series: row.series, nextNumber: Number(row.next_number), digits: Number(row.digits), active: row.active }));
+  return (data ?? []).map((row: any) => ({ id: row.id, siteId: row.site_id, companyPrefix: row.company_prefix, functionPrefix: row.function_prefix, series: row.series, nextNumber: Number(row.next_number), digits: Number(row.digits), active: row.active, separator: (row.separator ?? '-') as TagSeparator, useFunctionPrefix: row.use_function_prefix ?? true }));
 }
 
 export async function saveAssetTagSiteSeries(rule: AssetTagSiteSeries, companyId = getActiveCompanyId()): Promise<string> {
@@ -35,6 +36,14 @@ export async function saveAssetTagSiteSeries(rule: AssetTagSiteSeries, companyId
   const { data, error } = await client().rpc('assetflow_save_asset_tag_site_series', { p_company_id: companyId, p_rule: rule });
   if (error) throw new Error(error.message);
   return data as string;
+}
+
+/** Sets the separator and function-prefix choice for every site of the company at once. Existing asset tags are not changed. */
+export async function setAssetTagFormat(separator: TagSeparator, useFunctionPrefix: boolean, companyId = getActiveCompanyId()): Promise<number> {
+  if (!companyId) throw new Error('No company is selected.');
+  const { data, error } = await client().rpc('assetflow_set_asset_tag_format', { p_company_id: companyId, p_separator: separator, p_use_function_prefix: useFunctionPrefix });
+  if (error) throw new Error(error.message);
+  return Number(data ?? 0);
 }
 
 export async function reserveAssetTags(siteId: string, typeCode: string, quantity = 1, companyId = getActiveCompanyId()): Promise<string[]> {

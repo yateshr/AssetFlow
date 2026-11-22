@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,7 +103,7 @@ export function DepartmentsPage({
     setEditingDepartmentValue('');
   };
 
-  const handleDeleteDepartment = (department: string) => {
+  const handleDeleteDepartment = async (department: string) => {
     const usedByCount = usersList.filter(
       user => user.siteId === siteId && user.department === department
     ).length;
@@ -115,7 +117,7 @@ export function DepartmentsPage({
       return;
     }
 
-    if (confirm(`Delete ${department}?`)) {
+    if (await confirmDialog({ title: 'Delete department?', message: `Delete ${department}?`, destructive: true })) {
       if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange(departmentRecords.filter(item => !(item.siteId === siteId && item.name === department)));
       else onDepartmentsChange(departmentsList.filter(item => item !== department));
     }
@@ -130,6 +132,13 @@ export function DepartmentsPage({
             Each office, plant and warehouse maintains its own department list.
           </p>
         </div>
+        <ExportMenu label="Export all" disabled={departmentRecords.length === 0 && departmentsList.length === 0} build={() => ({
+          name: 'departments', sheet: 'Departments',
+          headers: ['Department', 'Site'],
+          rows: departmentRecords.length
+            ? departmentRecords.map(d => [d.name, sitesList.find(l => l.id === d.siteId)?.name || ''])
+            : departmentsList.map(name => [name, '']),
+        })} />
       </div>
 
       <Card>

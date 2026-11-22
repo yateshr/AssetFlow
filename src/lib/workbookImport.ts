@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
-import type { Asset, AssetHistoryEvent, AssetType, Assignment, Invoice, ItCallLog, Location, SoftwareLicense, User, Vendor } from '@/data/models';
+import { DEFAULT_ASSET_CATEGORIES } from '@/data/assetCategories';
+import type { Asset, AssetCategory, AssetHistoryEvent, AssetType, Assignment, Invoice, ItCallLog, Location, SoftwareLicense, User, Vendor } from '@/data/models';
 import { getCollection, kv, pendingWrites, replaceCollection } from '@/lib/db';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
@@ -49,6 +50,27 @@ const normalizeDepartment = (value: unknown) => upper(value).replace(/DEPERTMENT
 const normalizeLocation = (value: unknown) => upper(value).replace(/^X$/, '').replace(/\s+/g, ' ').trim();
 const isPlaceholderEmployee = (value: unknown) => /^(IT SPARE|INACTIVE USER|VACANT|EX-EMPLOYEE|LEFT|-)\b/i.test(text(value));
 
+/**
+ * Asset types the imported assets use that this company has not set up (for example a type that
+ * was deleted). They are created on import so no imported asset ends up with an unknown type.
+ */
+export function missingAssetCategories(data: Pick<WorkbookImport, 'assets'>): AssetCategory[] {
+  const existing = getCollection<AssetCategory>('asset-categories');
+  const known = new Set(existing.map(category => category.id));
+  const takenCodes = new Set(existing.map(category => (category.code || '').toUpperCase()));
+  const out: AssetCategory[] = [];
+  for (const id of Array.from(new Set(data.assets.map(asset => asset.type)))) {
+    if (!id || known.has(id)) continue;
+    const preset = DEFAULT_ASSET_CATEGORIES.find(category => category.id === id);
+    const name = preset?.name || id.replace(/[-_]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    let code = (preset?.code || name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'TYP').toUpperCase();
+    for (let n = 2; takenCodes.has(code) && n < 100; n++) code = `${code.slice(0, 2)}${n}`;
+    takenCodes.add(code);
+    out.push({ id, name, code, active: true });
+  }
+  return out;
+}
+
 export async function parseAssetWorkbooks(files: File[]): Promise<WorkbookImport> {
   const result = emptyImport();
   for (const file of files) {
@@ -68,6 +90,10 @@ export async function parseAssetWorkbooks(files: File[]): Promise<WorkbookImport
   result.invoices = uniqueBy(result.invoices, item => item.id);
   result.callLogs = uniqueBy(result.callLogs, item => item.id);
   result.stock = uniqueBy(result.stock, item => item.id);
+  const missing = missingAssetCategories(result);
+  if (missing.length) {
+    result.warnings.push({ code: 'missing-types', message: `These asset types are not set up in this company yet and will be created on import: ${missing.map(category => `${category.name} (${category.code})`).join(', ')}. You can rename them later in Settings → Asset setup.`, count: missing.length });
+  }
   return result;
 }
 
@@ -77,6 +103,8 @@ export async function applyWorkbookImport(data: WorkbookImport) {
   await replaceCollection('users', merge(getCollection<User>('users'), data.users, item => item.id));
   await replaceCollection('locations', merge(getCollection<Location>('locations'), data.locations, item => item.id));
   await replaceCollection('departments', merge(getCollection<{ id: string; name: string }>('departments'), data.departments, item => item.id));
+  const missingTypes = missingAssetCategories(data);
+  if (missingTypes.length) await replaceCollection('asset-categories', [...getCollection<AssetCategory>('asset-categories'), ...missingTypes]);
   await replaceCollection('assets', merge(getCollection<Asset>('assets'), data.assets, item => item.assetTag.toUpperCase()));
   await replaceCollection('assignments', merge(getCollection<Assignment>('assignments'), data.assignments, item => item.assetId));
   await replaceCollection('history', merge(getCollection<AssetHistoryEvent>('history'), data.history, item => item.id));

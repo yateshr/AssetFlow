@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Search, Package, Users, Truck, MapPin, Receipt, X } from 'lucide-react';
+import { CurrencyIcon } from '@/components/CurrencyIcon';
+import { Search, Package, Users, Truck, MapPin, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import type { Asset, User, Vendor, Location, Invoice } from '@/data/models';
@@ -51,7 +52,7 @@ export function GlobalSearch({ assets, users, vendors, locations, invoices, onNa
     });
     invoices.forEach(i => {
       if ([i.invoiceNumber, i.poNumber, i.status, i.currency, i.paymentTerms].some(v => v?.toLowerCase().includes(q))) {
-        add(`invoice-${i.id}`, i.invoiceNumber, `${i.status} • ${i.currency} ${i.total.toLocaleString()}`, 'Invoice', 'invoices', Receipt);
+        add(`invoice-${i.id}`, i.invoiceNumber, `${i.status} • ${i.currency} ${i.total.toLocaleString()}`, 'Invoice', 'invoices', CurrencyIcon);
       }
     });
     return out;

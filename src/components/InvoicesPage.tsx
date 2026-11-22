@@ -1,4 +1,7 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { toast } from 'sonner';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, Eye, Edit, Trash2, PackagePlus, CheckCircle2, CreditCard, X, CalendarDays, Rows3, AlertTriangle, ChevronsUpDown, Check, Paperclip, Download, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,11 +92,11 @@ export function InvoicesPage({
     setEditing(null);
   };
 
-  const deleteInvoice = (invoice: Invoice) => {
+  const deleteInvoice = async (invoice: Invoice) => {
     if (invoice.lineItems.some(i => i.receivedQuantity > 0)) {
-      alert('This invoice has received items linked to assets and cannot be deleted.'); return;
+      toast.error('This invoice has received items linked to assets and cannot be deleted.'); return;
     }
-    if (confirm(`Delete invoice ${invoice.invoiceNumber}?`))
+    if (await confirmDialog({ title: 'Delete invoice?', message: `Delete invoice ${invoice.invoiceNumber}?`, destructive: true }))
       onInvoicesChange(invoicesList.filter(i => i.id !== invoice.id));
   };
 
@@ -101,7 +104,7 @@ export function InvoicesPage({
     if (!paymentInvoice) return;
     const outstanding = Math.max(0, paymentInvoice.total - paymentInvoice.amountPaid);
     if (data.amount > outstanding) {
-      alert(`Payment cannot exceed the outstanding balance of ${money(outstanding, paymentInvoice.currency)}.`);
+      toast.error(`Payment cannot exceed the outstanding balance of ${money(outstanding, paymentInvoice.currency)}.`);
       return;
     }
     const amountPaid = paymentInvoice.amountPaid + data.amount;
@@ -134,7 +137,14 @@ export function InvoicesPage({
   return <div className="af-stagger space-y-6">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div><h1 className="text-3xl font-bold tracking-tight">Invoices</h1><p className="text-muted-foreground">Record vendor invoices and link received items to assets.</p></div>
+      <div className="flex flex-wrap gap-2">
+      <ExportMenu disabled={filtered.length === 0} build={() => ({
+        name: 'invoices', sheet: 'Invoices',
+        headers: ['Invoice No.', 'Vendor', 'Site', 'Invoice Date', 'Due Date', 'PO Number', 'Currency', 'Subtotal', 'Tax', 'Total', 'Paid', 'Outstanding', 'Status', 'Payment Method', 'Payment Reference', 'Payment Date'],
+        rows: filtered.map(i => [i.invoiceNumber, vendorsList.find(v => v.id === i.vendorId)?.name || '', sitesList.find(l => l.id === i.siteId)?.name || '', i.invoiceDate, i.dueDate || '', i.poNumber || '', i.currency, i.subtotal, i.taxTotal, i.total, i.amountPaid, i.total - i.amountPaid, i.status, i.paymentMethod || '', i.paymentReference || '', i.paymentDate || '']),
+      })} />
       <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-2"/>Add Invoice</Button>
+      </div>
     </div>
     <Card><CardContent className="py-4"><div className="flex flex-col gap-3 sm:flex-row">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
@@ -163,7 +173,7 @@ export function InvoicesPage({
     </TableBody></Table></CardContent></Card>
 
     <Dialog open={!!viewing} onOpenChange={open=>!open&&setViewing(null)}><DialogContent className="!w-fit !min-w-[min(760px,calc(100vw-32px))] !max-w-[calc(100vw-32px)] !h-auto !max-h-[calc(100vh-32px)] p-0 gap-0 overflow-hidden rounded-lg">
-      {viewing&&<InvoiceDetails invoice={viewing} vendorName={vendorName(viewing.vendorId)} sitesList={sitesList} assetsList={assetsList} history={history} onClose={()=>setViewing(null)} onReceive={()=>{setViewing(null);alert('Create received assets from Assets → Add Batch. This preserves Site Series tags, serial numbers, and invoice-line limits.')}} onPayment={()=>{setViewing(null);setPaymentInvoice(viewing)}}/>}
+      {viewing&&<InvoiceDetails invoice={viewing} vendorName={vendorName(viewing.vendorId)} sitesList={sitesList} assetsList={assetsList} history={history} onClose={()=>setViewing(null)} onReceive={()=>{setViewing(null);toast.info('Create received assets from Assets → Add Batch. This preserves Site Series tags, serial numbers, and invoice-line limits.')}} onPayment={()=>{setViewing(null);setPaymentInvoice(viewing)}}/>}
     </DialogContent></Dialog>
 
     <Dialog open={!!paymentInvoice} onOpenChange={open=>!open&&setPaymentInvoice(null)}><DialogContent className="max-w-md">
@@ -176,6 +186,8 @@ export function InvoicesPage({
 function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel,assetCategories,sitesList,defaultSiteId,canChooseLocation}:{invoice:Invoice|null;invoices:Invoice[];vendors:Vendor[];onVendorsChange:(vendors:Vendor[])=>void;onSubmit:(data:Omit<Invoice,'id'|'createdAt'>)=>void;onCancel:()=>void;assetCategories:AssetCategory[];sitesList:Location[];defaultSiteId:string;canChooseLocation:boolean}) {
   const [currencyOptions]=useCollection<MasterDataOption>('currencies');
   const [unitOptions]=useCollection<MasterDataOption>('units-of-measure');
+  const [termRecords]=useCollection<MasterDataOption>('payment-terms');
+  const termOptions=termRecords.filter(option=>option.active&&option.name.trim());
   const [policies]=useCollection<SystemPolicy>('system-policies');
   const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const activeCurrencies=currencyOptions.filter(option=>option.active&&option.name.trim());
@@ -216,11 +228,13 @@ function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel
   const input='h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-none focus:outline-none focus:ring-2 focus:ring-ring';
   const select='h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring';
 
-  const requestClose=()=>{if(!dirty||window.confirm('Discard unsaved invoice changes?'))onCancel()};
+  const requestClose=async()=>{if(!dirty||await confirmDialog({title:'Discard changes?',message:'Discard unsaved invoice changes?',confirmLabel:'Discard',destructive:true}))onCancel()};
   const applyPaymentTerms=(value:string)=>{
     setPaymentTerms(value);
+    const known=termOptions.find(option=>option.name.trim().toLowerCase()===value.trim().toLowerCase())?.days;
     const match=value.match(/net\s*(\d+)/i);
-    if(match&&invoiceDate){const next=new Date(`${invoiceDate}T00:00:00`);next.setDate(next.getDate()+Number(match[1]));setDueDate(next.toISOString().slice(0,10));}
+    const days=known??(match?Number(match[1]):undefined);
+    if(days!==undefined&&invoiceDate){const next=new Date(`${invoiceDate}T00:00:00`);next.setDate(next.getDate()+days);setDueDate(next.toISOString().slice(0,10));}
   };
   const attachFile=(file?:File)=>{
     if(!file)return;
@@ -229,7 +243,7 @@ function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel
     const reader=new FileReader();reader.onload=()=>{setAttachmentName(file.name);setAttachmentType(file.type);setAttachmentDataUrl(String(reader.result));setErrors(current=>({...current,attachment:''}));setDirty(true)};reader.readAsDataURL(file);
   };
 
-  const submit=(e:FormEvent)=>{e.preventDefault();
+  const submit=async(e:FormEvent)=>{e.preventDefault();
     const intent=submitIntent.current;
     const nextErrors:Record<string,string>={};
     if(!vendorId)nextErrors.vendor='Select a vendor.';
@@ -245,7 +259,7 @@ function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel
     if(Object.keys(nextErrors).length)return;
     if(priorYearDuplicates.length){
       const years=Array.from(new Set(priorYearDuplicates.map(existing=>new Date(`${existing.invoiceDate}T00:00:00`).getFullYear()))).sort().join(', ');
-      if(!window.confirm(`Invoice number ${invoiceNumber.trim()} was previously used by this vendor in ${years}. The current invoice date is in ${invoiceYear}. Continue?`))return;
+      if(!(await confirmDialog({title:'Invoice number used before',message:`Invoice number ${invoiceNumber.trim()} was previously used by this vendor in ${years}. The current invoice date is in ${invoiceYear}. Continue?`})))return;
     }
     setDirty(false);
     onSubmit({vendorId,siteId:siteId||undefined,invoiceNumber:invoiceNumber.trim(),invoiceDate,dueDate:dueDate||undefined,currency,paymentTerms:paymentTerms.trim()||undefined,poNumber:poNumber.trim()||undefined,poDate:poDate||undefined,status:intent==='draft'?'draft':(status==='draft'?'open':status),notes:notes.trim()||undefined,attachmentName:attachmentName||undefined,attachmentType:attachmentType||undefined,attachmentDataUrl:attachmentDataUrl||undefined,subtotal,taxTotal,total,amountPaid:invoice?.amountPaid||0,paymentDate:invoice?.paymentDate,paymentReference:invoice?.paymentReference,paymentMethod:invoice?.paymentMethod,lineItems:items});
@@ -304,7 +318,7 @@ function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel
         <Field label="Currency"><select value={currency} onChange={e=>setCurrency(e.target.value)} className={select}>{activeCurrencies.map(option=><option key={option.id} value={option.name}>{option.name}</option>)}</select></Field>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <Field label="Payment Terms"><Input className={input} value={paymentTerms} onChange={e=>applyPaymentTerms(e.target.value)} placeholder="Net 30"/></Field>
+        <Field label="Payment Terms"><Input className={input} list="payment-term-options" value={paymentTerms} onChange={e=>applyPaymentTerms(e.target.value)} placeholder="Net 30"/><datalist id="payment-term-options">{termOptions.map(option=><option key={option.id} value={option.name}/>)}</datalist></Field>
         <Field label="PO Number" error={errors.poNumber || (duplicatePo?`Already used on invoice ${duplicatePo.invoiceNumber}.`:'')}><Input aria-invalid={!!errors.poNumber||!!duplicatePo} className={input} value={poNumber} onChange={e=>setPoNumber(e.target.value)} placeholder="PO-2026-001"/></Field>
         <Field label="PO Date"><div className="relative"><Input type="date" className={`${input} pr-9`} value={poDate} onChange={e=>setPoDate(e.target.value)}/><CalendarDays className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/></div></Field>
         <Field label="Status"><select value={status} onChange={e=>setStatus(e.target.value as InvoiceStatus)} className={select}>{Object.keys(STATUS_STYLES).map(s=><option key={s} value={s}>{s.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>)}</select></Field>
@@ -426,7 +440,7 @@ function QuickVendorForm({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      alert('Vendor Name is required.');
+      toast.error('Vendor Name is required.');
       return;
     }
 
@@ -758,9 +772,13 @@ function InvoiceDetails({
   );
 }
 
-const PAYMENT_METHODS = ['Bank Transfer', 'UPI', 'Cheque', 'Cash', 'Credit/Debit Card', 'Other'];
+const FALLBACK_PAYMENT_METHODS = ['Bank Transfer', 'UPI', 'Cheque', 'Cash', 'Credit/Debit Card', 'Other'];
 
 function PaymentForm({invoice,onSubmit,onCancel}:{invoice:Invoice;onSubmit:(data:{amount:number;date:string;reference:string;method:string})=>void;onCancel:()=>void}) {
+  const [methodRecords]=useCollection<MasterDataOption>('payment-methods');
+  const PAYMENT_METHODS=methodRecords.filter(option=>option.active&&option.name.trim()).map(option=>option.name);
+  if(!PAYMENT_METHODS.length)PAYMENT_METHODS.push(...FALLBACK_PAYMENT_METHODS);
+  if(invoice.paymentMethod&&!PAYMENT_METHODS.includes(invoice.paymentMethod))PAYMENT_METHODS.push(invoice.paymentMethod);
   const outstanding = Math.max(0, Math.round((invoice.total - invoice.amountPaid) * 100) / 100);
   const [amount,setAmount]=useState(String(outstanding));
   const [date,setDate]=useState(new Date().toISOString().split('T')[0]);

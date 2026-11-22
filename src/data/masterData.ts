@@ -4,6 +4,13 @@ export interface MasterDataOption {
   code?: string;
   active: boolean;
   targetHours?: number;
+  /** Currencies only: how many units of the company's default currency one unit of this currency is worth. */
+  rate?: number;
+  /** Payment terms only: days from invoice date until payment is due. */
+  days?: number;
+  /** Call priorities: badge colour. */
+  tone?: 'gray' | 'green' | 'blue' | 'amber' | 'orange' | 'red';
+  /** Archived items stay on existing records but are hidden from new-record pickers. */
 }
 
 export interface SystemPolicy {
@@ -37,11 +44,12 @@ export const MASTER_DATA_DEFAULTS: Record<string, MasterDataOption[]> = {
     option('access','Access'), option('asset-request','Asset Request'), option('other','Other'),
   ],
   'call-priorities': [
-    { ...option('low','Low'), targetHours: 72 }, { ...option('medium','Medium'), targetHours: 24 },
-    { ...option('high','High'), targetHours: 8 }, { ...option('critical','Critical'), targetHours: 2 },
+    { ...option('low','Low'), targetHours: 72, tone: 'green' as const }, { ...option('medium','Medium'), targetHours: 24, tone: 'blue' as const },
+    { ...option('high','High'), targetHours: 8, tone: 'orange' as const }, { ...option('critical','Critical'), targetHours: 2, tone: 'red' as const },
   ],
   'location-types': [option('office','Office'), option('warehouse','Warehouse'), option('remote','Remote')],
-  'vendor-categories': ['Hardware','Software','Services','Cloud','Telecom','Consulting','Other'].map(value => option(value.toLowerCase(), value)),
+  'payment-methods': ['Bank Transfer','UPI','Cheque','Cash','Credit/Debit Card','Other'].map(value => option(value.toLowerCase().replace(/[^a-z0-9]+/g,'-'), value)),
+  'payment-terms': [['due-on-receipt','Due on receipt',0],['net-15','Net 15',15],['net-30','Net 30',30],['net-45','Net 45',45],['net-60','Net 60',60]].map(([id,name,days]) => ({ ...option(id as string, name as string), days: days as number })),
   'asset-conditions': [option('new','New'), option('good','Good'), option('fair','Fair'), option('damaged','Damaged'), option('missing','Missing')],
   'license-types': [option('subscription','Subscription'), option('perpetual','Perpetual')],
   'infrastructure-types': [

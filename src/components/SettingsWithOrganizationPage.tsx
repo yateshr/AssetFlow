@@ -3,7 +3,6 @@ import { Settings, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsPage } from './SettingsPage';
-import { ConfigurationPage } from './ConfigurationPage';
 import type { AssetCategory, Location, User } from '@/data/models';
 import type { Company } from '@/data/models';
 import { CompanyManagement } from './CompanyManagement';
@@ -53,9 +52,9 @@ export function SettingsWithOrganizationPage(props: SettingsWithOrganizationPage
       </Card>
 
       {tab === 'system' ? (
-        <SettingsPage />
+        <SettingsPage onOpenOrganization={() => setTab('company')} />
       ) : (
-        <div className="space-y-6"><CompanyManagement companies={props.companies} locations={props.sitesList} onChanged={props.onCompaniesChanged}/><ConfigurationPage {...props} /></div>
+        <div className="space-y-6"><CompanyManagement companies={props.companies} locations={props.sitesList} onChanged={props.onCompaniesChanged}/><p className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">Asset types and asset-tag numbering are now under <b>System Settings → Asset setup</b>.</p></div>
       )}
     </div>
   );

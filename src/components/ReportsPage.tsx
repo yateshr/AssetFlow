@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CurrencyIcon } from '@/components/CurrencyIcon';
 import {
   Activity,
   AlertTriangle,
@@ -10,7 +11,6 @@ import {
   Laptop,
   MapPin,
   Package,
-  Receipt,
   ShieldAlert,
   TrendingUp,
   Users,
@@ -36,6 +36,7 @@ import { loadConsolidatedSummary, useCollection } from '@/lib/db';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 import {
   formatCurrency,
+  invoiceBaseTotal,
   formatDate,
   formatTitle,
   type Asset,
@@ -157,7 +158,8 @@ export function ReportsPage({
   );
 
   const totalValue = filteredAssets.reduce((sum, asset) => sum + asset.purchasePrice, 0);
-  const periodSpend = periodInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
+  const periodSpend = periodInvoices.reduce((sum, invoice) => sum + (invoiceBaseTotal(invoice) ?? 0), 0);
+  const unconvertedInvoices = periodInvoices.filter(invoice => invoiceBaseTotal(invoice) === null).length;
   const assignedCount = filteredAssets.filter((asset) => asset.status === 'assigned').length;
   const availableCount = filteredAssets.filter((asset) => asset.status === 'available').length;
   const maintenanceCount = filteredAssets.filter((asset) => asset.status === 'maintenance').length;
@@ -228,7 +230,7 @@ export function ReportsPage({
       name: vendor.name,
       value: periodInvoices
         .filter((invoice) => invoice.vendorId === vendor.id)
-        .reduce((sum, invoice) => sum + invoice.total, 0),
+        .reduce((sum, invoice) => sum + (invoiceBaseTotal(invoice) ?? 0), 0),
     }))
     .filter((row) => row.value > 0)
     .sort((a, b) => b.value - a.value)
@@ -238,7 +240,7 @@ export function ReportsPage({
     const map = new Map<string, number>();
     periodInvoices.forEach((invoice) => {
       const key = invoice.invoiceDate.slice(0, 7);
-      map.set(key, (map.get(key) || 0) + invoice.total);
+      map.set(key, (map.get(key) || 0) + (invoiceBaseTotal(invoice) ?? 0));
     });
 
     return Array.from(map.entries())
@@ -508,10 +510,11 @@ export function ReportsPage({
 
       <Card className={reportView==='portfolio'?'':'hidden'}><CardHeader><CardTitle>Company portfolio</CardTitle><p className="text-sm text-muted-foreground">Consolidated operational position across every company you can access.</p></CardHeader><CardContent className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="py-3">Company</th><th>Sites</th><th>Users</th><th>Assets</th><th>Assigned</th><th>Maintenance</th><th>Open calls</th><th className="text-right">Asset value</th><th className="text-right">Invoice total</th></tr></thead><tbody>{portfolio.map(row=><tr key={row.companyId} className="border-b last:border-0"><td className="py-4"><p className="font-medium">{row.companyName}</p><p className="text-xs text-muted-foreground">{row.companyCode}</p></td><td>{row.sites}</td><td>{row.users}</td><td>{row.assets}</td><td>{row.assigned}</td><td>{row.maintenance}</td><td>{row.openCalls}</td><td className="text-right">{formatCurrency(row.assetValue)}</td><td className="text-right">{formatCurrency(row.invoiceTotal)}</td></tr>)}{portfolio.length===0&&<tr><td colSpan={9} className="py-10 text-center text-muted-foreground">No accessible company data is available.</td></tr>}</tbody></table></CardContent></Card>
 
+      {unconvertedInvoices>0&&reportView!=='portfolio'&&<p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">{unconvertedInvoices} invoice{unconvertedInvoices===1?'':'s'} in a foreign currency {unconvertedInvoices===1?'is':'are'} left out of spend totals because no exchange rate is set. Add the rate in Settings → Currencies.</p>}
       <div className={`${reportView==='portfolio'?'hidden':'grid'} grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`}>
         <MetricCard label="Total Asset Value" value={formatCurrency(totalValue)} icon={Wallet} />
         <MetricCard label="Assets in Scope" value={filteredAssets.length} icon={Package} />
-        <MetricCard label="Period IT Spend" value={formatCurrency(periodSpend)} icon={Receipt} />
+        <MetricCard label="Period IT Spend" value={formatCurrency(periodSpend)} icon={CurrencyIcon} />
         <MetricCard label="Active Assignments" value={activeAssignments} icon={Activity} />
       </div>
 

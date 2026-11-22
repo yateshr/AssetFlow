@@ -1,4 +1,8 @@
 import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
+import { masterLabel } from '@/lib/masterLabel';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { toast } from 'sonner';
+import { ExportMenu } from '@/components/ExportMenu';
 import { useCollection } from '@/lib/db';
 const LabelPrintDialog = lazy(() => import('./LabelPrintDialog').then(m => ({ default: m.LabelPrintDialog })));
 import type { MasterDataOption } from '@/data/masterData';
@@ -199,10 +203,10 @@ export function AssetsPage({
     kv.setItem('assetflow-archived-assets', JSON.stringify(items));
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const asset = assets.find(a => a.id === id);
     if (!asset) return;
-    if (!window.confirm(`Archive ${asset.name} (${asset.assetTag})? The asset will be removed from active lists but can be restored.`)) return;
+    if (!(await confirmDialog({ title: 'Archive asset?', message: `Archive ${asset.name} (${asset.assetTag})? The asset will be removed from active lists but can be restored.`, confirmLabel: 'Archive' }))) return;
 
     const archived = { ...asset, deletedAt: new Date().toISOString(), deletedBy: currentUser.id };
     const nextArchived = [archived, ...archivedAssets.filter(a => a.id !== id)];
@@ -229,16 +233,16 @@ export function AssetsPage({
     window.setTimeout(() => setUndoAsset(current => current?.id === id ? null : current), 8000);
   };
 
-  const restoreAsset = (archived: Asset & { deletedAt: string; deletedBy?: string }) => {
+  const restoreAsset = async (archived: Asset & { deletedAt: string; deletedBy?: string }) => {
     const conflict = assets.find(a => a.id !== archived.id && (
       a.assetTag.trim().toLowerCase() === archived.assetTag.trim().toLowerCase() ||
       a.serialNumber.trim().toLowerCase() === archived.serialNumber.trim().toLowerCase()
     ));
     if (conflict) {
-      window.alert(`Cannot restore ${archived.name}. Asset Tag or Serial Number is already in use by ${conflict.name} (${conflict.assetTag}).`);
+      toast.error(`Cannot restore ${archived.name}. Asset Tag or Serial Number is already in use by ${conflict.name} (${conflict.assetTag}).`);
       return;
     }
-    if (!window.confirm(`Restore ${archived.name} (${archived.assetTag}) to active assets?`)) return;
+    if (!(await confirmDialog({ title: 'Restore asset?', message: `Restore ${archived.name} (${archived.assetTag}) to active assets?`, confirmLabel: 'Restore' }))) return;
     const restored = archivedAssets.filter(a => a.id !== archived.id);
     persistArchived(restored);
     onAssetsChange([...assets, { ...archived }]);
@@ -279,33 +283,17 @@ export function AssetsPage({
     departmentFilter !== 'all' ? departmentFilter : '', minPrice, maxPrice
   ].filter(Boolean).length;
 
-  const handleExport = () => {
-    const csvContent = [
-      ['ID', 'Name', 'Type', 'Manufacturer', 'Model', 'Serial Number', 'Asset Tag', 'Status', 'Purchase Date', 'Purchase Price', 'Warranty Expiry', 'Site', 'Assigned To'].join(','),
-      ...filteredAssets.map(a => [
-        a.id,
-        a.name,
-        a.type,
-        a.manufacturer,
-        a.model,
-        a.serialNumber,
-        a.assetTag,
-        a.status,
-        a.purchaseDate,
-        a.purchasePrice,
-        a.warrantyExpiry,
-        a.siteId,
-        a.assignedTo ? usersList.find(u => u.id === a.assignedTo)?.name || a.assignedTo : ''
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'assets-export.csv';
-    a.click();
-  };
+  const buildExport = () => ({
+    name: 'assets',
+    sheet: 'Assets',
+    headers: ['Asset Tag', 'Name', 'Type', 'Manufacturer', 'Model', 'Serial Number', 'Status', 'Condition', 'Site', 'Assigned To', 'Purchase Date', 'Purchase Price', 'Warranty Expiry', 'AMC Provider', 'AMC Expiry', 'Insurance Provider', 'Insurance Expiry', 'Notes'],
+    rows: filteredAssets.map(a => [
+      a.assetTag, a.name, masterLabel('asset-categories', a.type), a.manufacturer, a.model, a.serialNumber, a.status, a.condition || '',
+      sitesList.find(l => l.id === a.siteId)?.name || a.siteId,
+      a.assignedTo ? usersList.find(u => u.id === a.assignedTo)?.name || a.assignedTo : '',
+      a.purchaseDate, a.purchasePrice, a.warrantyExpiry, a.amcProvider || '', a.amcExpiry || '', a.insuranceProvider || '', a.insuranceExpiry || '', a.notes || '',
+    ]),
+  });
 
   return (
     <div className="af-stagger space-y-6">
@@ -316,10 +304,7 @@ export function AssetsPage({
           <p className="text-muted-foreground">Manage your IT assets and inventory</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <ExportMenu build={buildExport} disabled={filteredAssets.length === 0} />
           <Button variant="outline" onClick={() => setLabelAssets(filteredAssets)} disabled={filteredAssets.length === 0}>
             <Printer className="h-4 w-4 mr-2" />
             Print labels
@@ -517,7 +502,7 @@ export function AssetsPage({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="capitalize">{asset.type}</TableCell>
+                      <TableCell>{masterLabel('asset-categories', asset.type)}</TableCell>
                       <TableCell className="font-mono text-xs">{asset.assetTag}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={getStatusBadge(asset.status)}>
@@ -658,7 +643,7 @@ export function AssetsPage({
                   duplicateFields.push(`Serial Number "${data.serialNumber.trim()}"`);
                 }
 
-                window.alert(
+                toast.error(
                   `Duplicate asset detected.\n\n${duplicateFields.join(' and ')} already belongs to "${duplicateAsset.name}" (${duplicateAsset.assetTag}).\n\nPlease use a unique Asset Tag and Serial Number.`
                 );
                 return;
@@ -739,7 +724,7 @@ export function AssetsPage({
                   const [created]=await createTaggedAssets(draftAsset.siteId,category?.code||category?.name||draftAsset.type,[draftAsset]);
                   newAsset=created as Asset;
                 } catch (error) {
-                  window.alert(error instanceof Error ? error.message : 'Could not create the asset.');
+                  toast.error(error instanceof Error ? error.message : 'Could not create the asset.');
                   return;
                 }
                 onAssetsChange([...assets, newAsset]);
@@ -1010,7 +995,7 @@ function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules
   const isCreating = !asset;
   const selectedLocationName = sitesList.find(location => location.id === formData.siteId)?.name || 'Your assigned site';
   const tagRule=assetTagRules.find(rule=>rule.active&&rule.siteId===formData.siteId);
-  useEffect(()=>{if(!isCreating||!tagRule)return;const typeCode=assetCategories.find(item=>item.id===formData.type)?.code||assetCategories.find(item=>item.id===formData.type)?.name||'';setFormData(current=>({...current,assetTag:[tagRule.companyPrefix,tagRule.functionPrefix,typeCode,`${tagRule.series}${String(tagRule.nextNumber).padStart(tagRule.digits,'0')}`].filter(Boolean).join('-')}));},[formData.siteId,formData.type,tagRule?.id]);
+  useEffect(()=>{if(!isCreating||!tagRule)return;const typeCode=assetCategories.find(item=>item.id===formData.type)?.code||assetCategories.find(item=>item.id===formData.type)?.name||'';setFormData(current=>({...current,assetTag:[tagRule.companyPrefix,tagRule.useFunctionPrefix===false?'':tagRule.functionPrefix,typeCode,`${tagRule.series}${String(tagRule.nextNumber).padStart(tagRule.digits,'0')}`].filter(Boolean).join(tagRule.separator??'-')}));},[formData.siteId,formData.type,tagRule?.id]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1348,7 +1333,7 @@ function AssetDetail({ asset, usersList, sitesList }: { asset: Asset; usersList:
         </div>
         <div>
           <p className="text-sm font-medium text-muted-foreground">Type</p>
-          <p className="text-sm text-foreground capitalize">{asset.type}</p>
+          <p className="text-sm text-foreground">{masterLabel('asset-categories', asset.type)}</p>
         </div>
         <div>
           <p className="text-sm font-medium text-muted-foreground">Status</p>

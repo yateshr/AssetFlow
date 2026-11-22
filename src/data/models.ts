@@ -329,3 +329,16 @@ export function formatTitle(value: string): string {
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 }
+
+/**
+ * An invoice total expressed in the company's default currency, so totals across
+ * invoices are never added in mixed currencies. Returns null when the invoice is in a
+ * foreign currency that has no exchange rate set in Settings → Currencies.
+ */
+export function invoiceBaseTotal(invoice: { total: number; currency?: string }): number | null {
+  const policy = getCollection<SystemPolicy>('system-policies')[0] || DEFAULT_SYSTEM_POLICY;
+  const code = (invoice.currency || policy.defaultCurrency).split(' ')[0].toUpperCase();
+  if (code === policy.defaultCurrency.toUpperCase()) return invoice.total;
+  const rate = getCollection<{ id: string; rate?: number }>('currencies').find(c => c.id.toUpperCase() === code)?.rate;
+  return rate && rate > 0 ? invoice.total * rate : null;
+}

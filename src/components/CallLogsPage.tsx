@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { masterLabel } from '@/lib/masterLabel';
+import { confirmDialog } from '@/components/ConfirmHost';
 import {
   CalendarDays,
   Download,
@@ -28,6 +30,7 @@ import {
   type ItCallStatus
 } from '@/data/models';
 import { exportExcelReport } from '@/lib/reportExport';
+import { slaFor, type SlaState } from '@/lib/sla';
 import { useCollection } from '@/lib/db';
 import { DEFAULT_SYSTEM_POLICY, type MasterDataOption, type SystemPolicy } from '@/data/masterData';
 
@@ -41,6 +44,15 @@ interface CallLogsPageProps {
   onCallLogsChange: (callLogs: ItCallLog[]) => void;
   currentUser: User;
 }
+
+const SLA_CLASS: Record<SlaState, string> = {
+  none: '',
+  'on-track': 'border-chart-2/30 bg-chart-2/10 text-chart-2',
+  'due-soon': 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  breached: 'border-destructive/40 bg-destructive/10 text-destructive',
+  met: 'border-chart-2/30 bg-chart-2/10 text-chart-2',
+  missed: 'border-destructive/40 bg-destructive/10 text-destructive',
+};
 
 export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs, onCallLogsChange, currentUser }: CallLogsPageProps) {
   const [sitesList]=useCollection<Location>('locations');
@@ -82,8 +94,8 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
   const resolvedCount = filteredCallLogs.filter(call => call.status === 'resolved' || call.status === 'closed').length;
   const criticalCount = filteredCallLogs.filter(call => call.priority === 'critical').length;
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this call log entry?')) {
+  const handleDelete = async (id: string) => {
+    if (await confirmDialog({ title: 'Delete call?', message: 'Delete this call log entry? This cannot be undone.', destructive: true })) {
       onCallLogsChange(callLogs.filter(call => call.id !== id));
     }
   };
@@ -123,7 +135,7 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
             call.resolutionDate || call.closedAt || '',
             call.assignedTo,
             formatTitle(call.priority),
-            formatTitle(call.category)
+            masterLabel('call-categories', call.category)
           ])
         }
       ]
@@ -206,6 +218,7 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
                 <TableHead>Asset ID</TableHead>
                 <TableHead>Problem</TableHead>
                 <TableHead>Priority</TableHead>
+                <TableHead>SLA</TableHead>
                 <TableHead>Assigned To</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -214,7 +227,7 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
             <TableBody>
               {filteredCallLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
                     No call log entries found
                   </TableCell>
                 </TableRow>
@@ -234,12 +247,13 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{call.assetTag || '—'}</TableCell>
-                    <TableCell className="max-w-[260px]"><p className="truncate text-sm" title={call.issue}>{call.issue}</p><p className="text-xs text-muted-foreground">{formatTitle(call.category)}</p></TableCell>
+                    <TableCell className="max-w-[260px]"><p className="truncate text-sm" title={call.issue}>{call.issue}</p><p className="text-xs text-muted-foreground">{masterLabel('call-categories', call.category)}</p></TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={getPriorityClass(call.priority)}>
-                        {formatTitle(call.priority)}
+                      <Badge variant="outline" className={getPriorityClass(call.priority, priorityRecords)}>
+                        {priorityRecords.find(p => p.id === call.priority)?.name || formatTitle(call.priority)}
                       </Badge>
                     </TableCell>
+                    <TableCell>{(() => { const sla = slaFor(call, priorityRecords); return sla.state === 'none' ? <span className="text-muted-foreground">—</span> : <Badge variant="outline" className={SLA_CLASS[sla.state]} title={sla.dueAt ? `Due ${sla.dueAt.toLocaleString()}` : undefined}>{sla.label}</Badge>; })()}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{call.assignedTo}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={getStatusClass(call.status)}>
@@ -557,14 +571,19 @@ function Detail({ label, value, className = '' }: { label: string; value: string
   );
 }
 
-function getPriorityClass(priority: ItCallPriority) {
-  const classes = {
-    low: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
-    medium: 'bg-primary/10 text-primary border-primary/20',
-    high: 'bg-chart-5/10 text-chart-5 border-chart-5/20',
-    critical: 'bg-destructive/10 text-destructive border-destructive/20'
-  };
-  return classes[priority];
+const TONE_CLASS: Record<string, string> = {
+  gray: 'bg-muted text-muted-foreground border-border',
+  green: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
+  blue: 'bg-primary/10 text-primary border-primary/20',
+  amber: 'bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400',
+  orange: 'bg-chart-5/10 text-chart-5 border-chart-5/20',
+  red: 'bg-destructive/10 text-destructive border-destructive/20',
+};
+const LEGACY_TONE: Record<string, string> = { low: 'green', medium: 'blue', high: 'orange', critical: 'red' };
+
+function getPriorityClass(priority: ItCallPriority, records: MasterDataOption[] = []) {
+  const tone = records.find(p => p.id === priority)?.tone || LEGACY_TONE[priority] || 'gray';
+  return TONE_CLASS[tone] || TONE_CLASS.gray;
 }
 
 function getStatusClass(status: ItCallStatus) {

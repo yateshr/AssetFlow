@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Asset, Invoice, ItCallLog } from '@/data/models';
 import { buildExpiryAlerts, describeDays } from '@/lib/alerts';
+import { slaFor } from '@/lib/sla';
+import type { MasterDataOption } from '@/data/masterData';
 import type { SoftwareLicense, Vendor } from '@/data/models';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
@@ -36,6 +38,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
   const [policies]=useCollection<SystemPolicy>('system-policies');
   const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [licenses]=useCollection<SoftwareLicense>('licenses');
+  const [priorities]=useCollection<MasterDataOption>('call-priorities');
   const [read, setRead] = useState<Record<string, boolean>>({});
 
   const loadRead = () => {
@@ -65,6 +68,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
         target: alert.target,
       });
     });
+    callLogs.filter(call=>['open','in-progress'].includes(call.status)&&slaFor(call,priorities,new Date(now)).state==='breached').forEach(call=>result.push({id:`sla-${call.id}`,title:'IT call past its SLA',detail:`${call.callerName} • ${call.issue} • ${slaFor(call,priorities,new Date(now)).label}`,severity:'critical',createdAt:call.date}));
     callLogs.filter(call=>call.priority==='critical'&&['open','in-progress'].includes(call.status)).forEach(call=>result.push({id:`call-${call.id}`,title:'Critical IT call open',detail:`${call.callerName} • ${call.issue}`,severity:'critical',createdAt:call.date}));
 
     try {
@@ -129,7 +133,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     } catch {}
 
     return result;
-  }, [assets, invoices, callLogs, licenses, vendors, read, open, policy.warrantyAlertDays, policy.licenseAlertDays]);
+  }, [assets, invoices, callLogs, licenses, vendors, priorities, read, open, policy.warrantyAlertDays, policy.licenseAlertDays]);
 
   const unread = notifications.filter(n => !read[n.id]).length;
 

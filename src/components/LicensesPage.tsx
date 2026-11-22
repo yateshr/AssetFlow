@@ -1,6 +1,10 @@
 import { useCollection } from '@/lib/db';
+import { masterLabel } from '@/lib/masterLabel';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { CurrencyIcon } from '@/components/CurrencyIcon';
+import { ExportMenu } from '@/components/ExportMenu';
 import { useState } from 'react';
-import { Plus, Search, Edit, Trash2, Key, Calendar, Users, DollarSign } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Key, Calendar, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -40,8 +44,8 @@ export function LicensesPage() {
   const usedSeats = licensesList.reduce((sum, l) => sum + l.usedSeats, 0);
   const avgUtilization = totalSeats > 0 ? Math.round((usedSeats / totalSeats) * 100) : 0;
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this license?')) {
+  const handleDelete = async (id: string) => {
+    if (await confirmDialog({ title: 'Delete license?', message: 'Are you sure you want to delete this license?', destructive: true })) {
       setLicensesList(licensesList.filter(l => l.id !== id));
     }
   };
@@ -54,10 +58,17 @@ export function LicensesPage() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Software Licenses</h1>
           <p className="text-muted-foreground">Manage software licenses and subscriptions</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ExportMenu disabled={filteredLicenses.length === 0} build={() => ({
+          name: 'software-licenses', sheet: 'Licenses',
+          headers: ['Name', 'Vendor', 'Type', 'Total Seats', 'Used Seats', 'Available Seats', 'Expiry Date', 'Cost'],
+          rows: filteredLicenses.map(l => [l.name, l.vendor, l.type, l.totalSeats, l.usedSeats, l.totalSeats - l.usedSeats, l.expiryDate, l.cost]),
+        })} />
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add License
         </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -87,7 +98,7 @@ export function LicensesPage() {
         <Card className="af-lift">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="h-12 w-12 rounded-lg bg-chart-3/10 flex items-center justify-center">
-              <DollarSign className="h-6 w-6 text-chart-3" />
+              <CurrencyIcon className="h-6 w-6 text-chart-3" />
             </div>
             <div>
               <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">{formatCurrency(totalCost)}</p>
@@ -184,7 +195,7 @@ export function LicensesPage() {
                       <TableCell className="text-sm text-muted-foreground">{license.vendor}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {license.type}
+                          {masterLabel('license-types', license.type)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

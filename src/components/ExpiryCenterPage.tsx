@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ExportMenu } from '@/components/ExportMenu';
 import { AlertTriangle, CalendarClock, CheckCircle2, Download, Search, ArrowUpRight, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import type { Asset, Invoice, SoftwareLicense, Vendor } from '@/data/models';
 import { formatDate } from '@/data/models';
 import { KIND_LABEL, buildExpiryAlerts, describeDays, type ExpiryAlert, type ExpiryKind, type Severity } from '@/lib/alerts';
 import type { Page } from './App';
+import { WarrantyTracker } from './WarrantyTracker';
 
 interface Props {
   assetsList: Asset[];
@@ -33,13 +35,6 @@ const WINDOWS = [
   { key: '90', label: '31–90 days', test: (a: ExpiryAlert) => a.days > 30 && a.days <= 90 },
 ] as const;
 
-/** Spreadsheet-safe CSV cell: quotes, and neutralises formula injection. */
-function csvCell(value: string | number) {
-  let text = String(value ?? '');
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
 export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavigate }: Props) {
   const [licenses] = useCollection<SoftwareLicense>('licenses');
   const [policies] = useCollection<SystemPolicy>('system-policies');
@@ -48,6 +43,7 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
   const [kind, setKind] = useState<ExpiryKind | 'all'>('all');
   const [window, setWindow] = useState<(typeof WINDOWS)[number]['key']>('all');
   const [query, setQuery] = useState('');
+  const [view, setView] = useState<'alerts' | 'warranty'>('alerts');
 
   const alerts = useMemo(
     () => buildExpiryAlerts({ assets: assetsList, licenses, vendors: vendorsList, invoices: invoicesList, policy }),
@@ -74,20 +70,11 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
   const soon = alerts.filter(a => a.kind !== 'seats' && a.days >= 0 && a.days <= 30).length;
   const later = alerts.filter(a => a.kind !== 'seats' && a.days > 30).length;
 
-  const exportCsv = () => {
-    const rows = [
-      ['Type', 'Item', 'Alert', 'Detail', 'Date', 'Days', 'Severity'],
-      ...visible.map(a => [KIND_LABEL[a.kind], a.subject, a.title, a.detail, a.date, a.date ? a.days : '', a.severity]),
-    ];
-    const csv = '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `expiry-alerts-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${visible.length} alert${visible.length === 1 ? '' : 's'}`);
-  };
+  const buildExport = () => ({
+    name: 'expiry-alerts', sheet: 'Expiry alerts',
+    headers: ['Type', 'Item', 'Alert', 'Detail', 'Date', 'Days', 'Severity'],
+    rows: visible.map(a => [KIND_LABEL[a.kind], a.subject, a.title, a.detail, a.date, a.date ? a.days : '', a.severity]),
+  });
 
   const pageFor = (a: ExpiryAlert): Page => a.target;
 
@@ -107,11 +94,17 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
             Warning window: assets {policy.warrantyAlertDays} days, licenses {policy.licenseAlertDays} days.
           </p>
         </div>
-        <Button variant="outline" onClick={exportCsv} disabled={visible.length === 0}>
-          <Download className="h-4 w-4" /> Export CSV
-        </Button>
+        {view === 'alerts' && <ExportMenu build={buildExport} disabled={visible.length === 0} />}
       </div>
 
+      <div className="inline-flex rounded-lg border bg-muted/40 p-1" role="tablist">
+        {([['alerts', 'All alerts'], ['warranty', 'Warranty tracker']] as const).map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${view === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>{label}</button>
+        ))}
+      </div>
+
+      {view === 'warranty' ? <WarrantyTracker assetsList={assetsList} onNavigate={onNavigate} /> : <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {tiles.map(({ label, value, icon: Icon, tone, onClick }) => (
           <Card key={label} className="af-lift cursor-pointer" onClick={onClick}>
@@ -203,6 +196,7 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
           )}
         </CardContent>
       </Card>
+      </>}
     </div>
   );
 }

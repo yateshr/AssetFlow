@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { confirmDialog } from '@/components/ConfirmHost';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, Edit, Trash2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,8 +31,8 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
     return matchesSearch;
   });
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this vendor?')) {
+  const handleDelete = async (id: string) => {
+    if (await confirmDialog({ title: 'Delete vendor?', message: 'Are you sure you want to delete this vendor?', destructive: true })) {
       onVendorsChange(vendorsList.filter(v => v.id !== id));
     }
   };
@@ -43,10 +45,17 @@ export function VendorsPage({ vendorsList, onVendorsChange }: VendorsPageProps) 
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Vendors</h1>
           <p className="text-muted-foreground">Manage suppliers and service providers</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ExportMenu disabled={filteredVendors.length === 0} build={() => ({
+          name: 'vendors', sheet: 'Vendors',
+          headers: ['Name', 'Contact Person', 'Email', 'Phone', 'Website', 'Address', 'Tax ID', 'Currency', 'Contract Expiry'],
+          rows: filteredVendors.map(v => [v.name, v.contactPerson, v.email, v.phone, v.website, v.address || '', v.taxId || '', v.currency || '', v.contractExpiry || '']),
+        })} />
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Vendor
         </Button>
+        </div>
       </div>
 
       {/* Filters */}
