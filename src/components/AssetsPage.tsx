@@ -1,4 +1,5 @@
 import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
+import { AssetDetailPage } from './AssetDetailPage';
 import { getDeviceSpec, saveDeviceSpec } from '@/lib/deviceSpecs';
 import { masterLabel } from '@/lib/masterLabel';
 import { confirmDialog } from '@/components/ConfirmHost';
@@ -97,7 +98,12 @@ export function AssetsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [labelAssets, setLabelAssets] = useState<Asset[] | null>(null);
   useEffect(() => {
-    if (initialSearch) { setSearchQuery(initialSearch); onInitialSearchConsumed?.(); }
+    if (initialSearch) {
+      // A scanned label link carries the exact tag: open that asset's page straight away.
+      const exact = [...assetsList, ...archivedAssets].find(item => item.assetTag.toLowerCase() === initialSearch.trim().toLowerCase());
+      if (exact) setViewingAsset(exact); else setSearchQuery(initialSearch);
+      onInitialSearchConsumed?.();
+    }
   }, [initialSearch]);
   const [statusFilter, setStatusFilter] = useState<AssetStatus | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all');
@@ -195,10 +201,13 @@ export function AssetsPage({
     return variants[status];
   };
 
-  const handleDelete = async (id: string) => {
+  // The detail page always shows the current version of the asset (edits, archive).
+  const liveViewing = viewingAsset ? (assets.find(a => a.id === viewingAsset.id) ?? archivedAssets.find(a => a.id === viewingAsset.id) ?? viewingAsset) : null;
+
+  const handleDelete = async (id: string): Promise<boolean> => {
     const asset = assets.find(a => a.id === id);
-    if (!asset) return;
-    if (!(await confirmDialog({ title: 'Archive asset?', message: `Archive ${asset.name} (${asset.assetTag})? The asset will be removed from active lists but can be restored.`, confirmLabel: 'Archive' }))) return;
+    if (!asset) return false;
+    if (!(await confirmDialog({ title: 'Archive asset?', message: `Archive ${asset.name} (${asset.assetTag})? The asset will be removed from active lists but can be restored.`, confirmLabel: 'Archive' }))) return false;
 
     const archived: Asset = { ...asset, archivedAt: new Date().toISOString(), archivedBy: currentUser.id };
     // One write: the asset keeps its row and is marked archived.
@@ -222,6 +231,7 @@ export function AssetsPage({
     ]);
     setUndoAsset(archived);
     window.setTimeout(() => setUndoAsset(current => current?.id === id ? null : current), 8000);
+    return true;
   };
 
   const restoreAsset = async (archived: Asset) => {
@@ -288,6 +298,31 @@ export function AssetsPage({
 
   return (
     <div className="af-stagger space-y-6">
+      {liveViewing ? (
+        <AssetDetailPage
+          asset={liveViewing}
+          users={usersList}
+          sites={sitesList}
+          invoices={invoices}
+          history={history}
+          onBack={() => setViewingAsset(null)}
+          onEdit={() => setEditingAsset(liveViewing)}
+          onLabel={() => setLabelAssets([liveViewing])}
+          menu={
+            <AssetActionMenu
+              asset={liveViewing}
+              hideView
+              onView={() => {}}
+              onHistory={() => setHistoryAsset(liveViewing)}
+              onEdit={() => setEditingAsset(liveViewing)}
+              onMove={() => setMovingAsset(liveViewing)}
+              onTransfer={() => setTransferringAsset(liveViewing)}
+              onLabel={() => setLabelAssets([liveViewing])}
+              onArchive={() => { void handleDelete(liveViewing.id).then(done => { if (done) setViewingAsset(null); }); }}
+            />
+          }
+        />
+      ) : (<>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -531,6 +566,8 @@ export function AssetsPage({
         </CardContent>
       </Card>
 
+      </>)}
+
       {undoAsset && (
         <div className="fixed bottom-5 right-5 z-[120] w-[min(92vw,420px)] rounded-lg border bg-card p-4 shadow-xl">
           <div className="flex items-start gap-3">
@@ -764,26 +801,6 @@ export function AssetsPage({
 
       <BatchAssetDialog open={showBatchModal} onClose={()=>setShowBatchModal(false)} sitesList={sitesList} assetCategories={assetCategories} invoices={invoices} isSuperAdmin={isSuperAdmin} defaultSiteId={isSuperAdmin?'':currentUser.siteId} canChooseSite={isSuperAdmin} existingAssets={[...assets,...archivedAssets]} onCreated={created=>{onAssetsChange([...assets,...created]);setShowBatchModal(false);}} />
 
-      {/* View Detail Modal */}
-      <Dialog open={!!viewingAsset} onOpenChange={(open) => !open && setViewingAsset(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Asset Details</DialogTitle>
-            <DialogDescription>Complete information about this asset</DialogDescription>
-          </DialogHeader>
-          {viewingAsset && <AssetDetail asset={viewingAsset} usersList={usersList} sitesList={sitesList} />}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setViewingAsset(null)}>Close</Button>
-            <Button onClick={() => {
-              setEditingAsset(viewingAsset);
-              setViewingAsset(null);
-            }}>
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <AssetHistoryDialog
         asset={historyAsset}
@@ -1289,90 +1306,3 @@ function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules
   );
 }
 
-function AssetDetail({ asset, usersList, sitesList }: { asset: Asset; usersList: User[]; sitesList: Location[] }) {
-  const location = sitesList.find(l => l.id === asset.siteId);
-  const assignedUser = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo) : null;
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Asset Name</p>
-          <p className="text-sm text-foreground">{asset.name}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Asset Tag</p>
-          <p className="text-sm font-mono text-foreground">{asset.assetTag}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Type</p>
-          <p className="text-sm text-foreground">{masterLabel('asset-categories', asset.type)}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Status</p>
-          <Badge variant="outline" className="capitalize">{asset.status === 'maintenance' ? 'Under Repair' : asset.status}</Badge>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Manufacturer</p>
-          <p className="text-sm text-foreground">{asset.manufacturer}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Model</p>
-          <p className="text-sm text-foreground">{asset.model}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Serial Number</p>
-          <p className="text-sm font-mono text-foreground">{asset.serialNumber}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Site</p>
-          <p className="text-sm text-foreground">{location?.name || '-'}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Purchase Date</p>
-          <p className="text-sm text-foreground">{formatDate(asset.purchaseDate)}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Purchase Price</p>
-          <p className="text-sm text-foreground">{formatCurrency(asset.purchasePrice)}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Warranty Expiry</p>
-          <p className="text-sm text-foreground">{formatDate(asset.warrantyExpiry)}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Condition</p>
-          <p className="text-sm capitalize text-foreground">{asset.condition || 'Not recorded'}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Accessories</p>
-          <p className="text-sm text-foreground">{asset.accessories || 'None recorded'}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">AMC</p>
-          <p className="text-sm text-foreground">{asset.amcProvider || 'Not covered'}{asset.amcExpiry ? ` • ${formatDate(asset.amcExpiry)}` : ''}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Insurance</p>
-          <p className="text-sm text-foreground">{asset.insuranceProvider || 'Not covered'}{asset.insuranceExpiry ? ` • ${formatDate(asset.insuranceExpiry)}` : ''}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Custody</p>
-          <p className="text-sm text-foreground">
-            {assignedUser?.name || custodianName()}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
-          <p className="text-sm text-foreground">{assignedUser?.name || 'Not assigned'}</p>
-        </div>
-        {asset.notes && (
-          <div className="col-span-2">
-            <p className="text-sm font-medium text-muted-foreground">Notes</p>
-            <p className="text-sm text-foreground">{asset.notes}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
