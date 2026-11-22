@@ -1,0 +1,19 @@
+node_modules
+dist
+.git
+.astro
+.claude
+.env
+.env.*
+!.env.docker.example
+supabase
+supabase-debug.txt
+tests
+docs
+scripts
+database
+*.xlsx
+*.xls
+*.md
+!README.md
+Start AssetFlow.cmd

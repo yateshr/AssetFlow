@@ -87,6 +87,18 @@ Want to look around first? An admin can import example data from **Demo & Data â
 
 It is a static site: build with `pnpm build` and host the `dist/` folder anywhere (Cloudflare Pages, Netlify, Vercel, Azure Static Web Apps, your own server). Set `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_KEY` as build-time environment variables on your host. In Supabase, add your site URL under **Authentication â†’ URL Configuration**.
 
+### Docker (your own server or NAS)
+
+A ready-made image and `docker-compose.yml` are included. The database address is given when the container starts, so one image works for any company. See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full guide: database setup, migrations, HTTPS, backups and updates.
+
+## Tests
+
+```powershell
+pnpm test        # unit tests (no database needed)
+pnpm test:db     # database tests: company isolation, permissions, asset tags (needs `pnpm db:start`; rolled back, keeps nothing)
+pnpm test:all    # both
+```
+
 ## How data is stored
 
 AssetFlow uses dedicated PostgreSQL tables for users, departments, locations, vendors, asset categories, assets, invoices, invoice line items, assignments, asset history, IT call logs, software licences, audit logs and master data. Important searchable fields are indexed and relationships use foreign keys.

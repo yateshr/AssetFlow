@@ -1,0 +1,15 @@
+# AssetFlow web app. The database (Supabase) runs separately: see docs/DEPLOYMENT.md.
+#
+#   1. Copy .env.docker.example to .env and fill it in.
+#   2. docker compose up -d --build
+#   3. Open http://localhost:8080
+services:
+  assetflow:
+    build: .
+    image: assetflow:latest
+    restart: unless-stopped
+    ports:
+      - "${ASSETFLOW_PORT:-8080}:80"
+    environment:
+      PUBLIC_SUPABASE_URL: ${PUBLIC_SUPABASE_URL:?Set PUBLIC_SUPABASE_URL in .env}
+      PUBLIC_SUPABASE_KEY: ${PUBLIC_SUPABASE_KEY:?Set PUBLIC_SUPABASE_KEY in .env}
