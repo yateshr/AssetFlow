@@ -209,7 +209,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
       label: 'System',
       items: [
         { id: 'settings', label: 'Settings', icon: Settings },
-        ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'transfer-approvals' as Page, label: 'Transfer Approvals', icon: ArrowRightLeft }] : []),
+        ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'transfer-approvals' as Page, label: 'Approvals', icon: ArrowRightLeft }] : []),
         ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'data-tools' as Page, label: 'Data Management', icon: Database }] : []),
       ],
     },

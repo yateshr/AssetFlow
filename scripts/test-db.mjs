@@ -232,6 +232,91 @@ test('a company-wide manager still works across all plants', async (q, f) => {
   await q(`select assetflow_upsert_company_records($1,'asset-categories',$2::jsonb)`, [f.A, JSON.stringify([{ id: 'ok', name: 'OK', active: true }])]);
 });
 
+// ----------------------------------------------------------------- asset requests (no invoice)
+async function requestSetup(q, f) {
+  await asSuper(q);
+  await q(`insert into asset_categories(company_id,id,data) values($1,'laptop','{"id":"laptop","name":"Laptop","code":"LAP","active":true}')`, [f.A]);
+  await asAdmin(q, f);
+  for (const [site, series] of [['SITE-A1', 'A'], ['SITE-A2', 'B']]) {
+    await q(`select assetflow_save_asset_tag_site_series($1,$2::jsonb)`, [f.A, JSON.stringify({ siteId: site, companyPrefix: 'NP', functionPrefix: 'IT', series, nextNumber: 1, digits: 4, active: true })]);
+  }
+  await asSite(q, f);
+}
+const asAdmin = (q, f) => as(q, f.admin, f.emailAdmin);
+const request = (site, over = {}) => JSON.stringify({ siteId: site, assetType: 'laptop', reason: 'Gifted by a vendor, no invoice', items: [{ name: 'Dell Latitude', serialNumber: 'REQ-1' }, { name: 'Dell Latitude', serialNumber: 'REQ-2' }], ...over });
+
+test('a site admin can ask for assets without an invoice, only for their own site', async (q, f) => {
+  await requestSetup(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  assert(rows[0].id, 'a request id should come back');
+  await rejects(q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A2')]), /assigned site/i);
+});
+
+test('a request needs a reason, a valid type and unique serial numbers', async (q, f) => {
+  await requestSetup(q, f);
+  await rejects(q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A1', { reason: 'no' })]), /explain/i);
+  await rejects(q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A1', { assetType: 'nope' })]), /valid asset type/i);
+  await rejects(q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A1', { items: [{ name: 'A', serialNumber: 'X' }, { name: 'B', serialNumber: 'x' }] })]), /unique/i);
+  await rejects(q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A1', { items: [{ name: 'A', serialNumber: '' }] })]), /name and a serial/i);
+});
+
+test('a site admin cannot approve their own request', async (q, f) => {
+  await requestSetup(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  await rejects(q(`select assetflow_decide_asset_creation($1,true,'')`, [rows[0].id]), /Only the Super Admin/i);
+});
+
+test('approving a request creates the assets with tags and history', async (q, f) => {
+  await requestSetup(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  await asAdmin(q, f);
+  const made = await q(`select assetflow_decide_asset_creation($1,true,'ok') as r`, [rows[0].id]);
+  assert(made.rows[0].r.map(a => a.assetTag).join() === 'NP-IT-LAP-A0001,NP-IT-LAP-A0002', `unexpected tags: ${JSON.stringify(made.rows[0].r.map(a => a.assetTag))}`);
+  assert(made.rows[0].r.every(a => a.siteId === 'SITE-A1' && a.status === 'available'), 'assets should be available at the requested site');
+  await asSuper(q);
+  const hist = await q(`select count(*)::int as n from asset_history where company_id=$1 and data->>'source'='asset-request'`, [f.A]);
+  assert(hist.rows[0].n === 2, 'each asset should get a Purchased history entry');
+  const req = await q(`select status, jsonb_array_length(created_asset_ids) as n from asset_creation_requests where id=$1`, [rows[0].id]);
+  assert(req.rows[0].status === 'approved' && req.rows[0].n === 2, 'the request should be marked approved with the created ids');
+});
+
+test('a request cannot be decided twice, and rejecting creates nothing', async (q, f) => {
+  await requestSetup(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  await asAdmin(q, f);
+  await q(`select assetflow_decide_asset_creation($1,false,'not needed')`, [rows[0].id]);
+  await rejects(q(`select assetflow_decide_asset_creation($1,true,'')`, [rows[0].id]), /already rejected/i);
+  await asSuper(q);
+  const n = await q(`select count(*)::int as n from assets where company_id=$1 and data->>'serialNumber' like 'REQ-%'`, [f.A]);
+  assert(n.rows[0].n === 0, 'no assets should exist after a rejection');
+});
+
+test('an approval that fails (duplicate serial) creates nothing and stays pending', async (q, f) => {
+  await requestSetup(q, f);
+  await asSuper(q);
+  await q(`insert into assets(company_id,id,data) values($1,'DUP','{"id":"DUP","serialNumber":"REQ-1","siteId":"SITE-A1","location":"SITE-A1"}')`, [f.A]);
+  await asSite(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  await asAdmin(q, f);
+  await rejects(q(`select assetflow_decide_asset_creation($1,true,'')`, [rows[0].id]), /already exists/i);
+  await asSuper(q);
+  const st = await q(`select status from asset_creation_requests where id=$1`, [rows[0].id]);
+  assert(st.rows[0].status === 'pending', 'the request should still be pending');
+});
+
+test('a site admin sees only their own site\'s requests; the Super Admin sees all', async (q, f) => {
+  await requestSetup(q, f);
+  await q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A1')]);
+  await asAdmin(q, f);
+  await q(`select assetflow_request_asset_creation($1,$2::jsonb)`, [f.A, request('SITE-A2', { items: [{ name: 'X', serialNumber: 'OTHER-1' }] })]);
+  await asSite(q, f);
+  const mine = await q(`select site_id from assetflow_list_asset_creation_requests($1)`, [f.A]);
+  assert(mine.rows.map(r => r.site_id).join() === 'SITE-A1', 'the site admin must only see requests for their site');
+  await asAdmin(q, f);
+  const all = await q(`select site_id from assetflow_list_asset_creation_requests($1)`, [f.A]);
+  assert(all.rows.length === 2, 'the Super Admin should see both requests');
+});
+
 // ----------------------------------------------------------------- runner
 let failed = 0;
 for (const { name, fn } of tests) {

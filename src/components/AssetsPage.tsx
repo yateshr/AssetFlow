@@ -1,4 +1,6 @@
 import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
+import { AssetRequestDialog } from './AssetRequestDialog';
+import { AssetRequestsPanel } from './AssetRequestsPanel';
 import { AssetDetailPage } from './AssetDetailPage';
 import { getDeviceSpec, saveDeviceSpec } from '@/lib/deviceSpecs';
 import { masterLabel } from '@/lib/masterLabel';
@@ -116,6 +118,9 @@ export function AssetsPage({
   const [undoAsset, setUndoAsset] = useState<Asset | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showAssetRequest, setShowAssetRequest] = useState(false);
+  const [showMyRequests, setShowMyRequests] = useState(false);
+  const [requestsRefresh, setRequestsRefresh] = useState(0);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [viewingAsset, setViewingAsset] = useState<Asset | null>(null);
   const [historyAsset, setHistoryAsset] = useState<Asset | null>(null);
@@ -343,6 +348,12 @@ export function AssetsPage({
             <Plus className="h-4 w-4 mr-2" />
             Add Asset
           </Button>}
+          {!isSuperAdmin && canCreateInvoiceAssets && (
+            <>
+              <Button variant="outline" onClick={() => setShowAssetRequest(true)}>Request asset (no invoice)</Button>
+              <Button variant="ghost" onClick={() => { setRequestsRefresh(n => n + 1); setShowMyRequests(true); }}>My requests</Button>
+            </>
+          )}
           {canCreateInvoiceAssets && <Button variant="outline" onClick={() => setShowBatchModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Batch
@@ -799,6 +810,13 @@ export function AssetsPage({
         </DialogContent>
       </Dialog>
 
+      <AssetRequestDialog open={showAssetRequest} onClose={() => setShowAssetRequest(false)} sites={sitesList} categories={assetCategories} defaultSiteId={currentUser.siteId} onSent={() => setRequestsRefresh(n => n + 1)} />
+      <Dialog open={showMyRequests} onOpenChange={setShowMyRequests}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>My asset requests</DialogTitle><DialogDescription>Requests for assets without an invoice, and what the Super Admin decided.</DialogDescription></DialogHeader>
+          <AssetRequestsPanel canDecide={false} refreshKey={requestsRefresh} />
+        </DialogContent>
+      </Dialog>
       <BatchAssetDialog open={showBatchModal} onClose={()=>setShowBatchModal(false)} sitesList={sitesList} assetCategories={assetCategories} invoices={invoices} isSuperAdmin={isSuperAdmin} defaultSiteId={isSuperAdmin?'':currentUser.siteId} canChooseSite={isSuperAdmin} existingAssets={[...assets,...archivedAssets]} onCreated={created=>{onAssetsChange([...assets,...created]);setShowBatchModal(false);}} />
 
 

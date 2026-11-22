@@ -117,6 +117,29 @@ export async function decideTransferRequest(id:string,approve:boolean,note=''): 
   const {error}=await client().rpc('assetflow_decide_transfer',{p_request_id:id,p_approve:approve,p_note:note}); if(error)throw new Error(error.message);
 }
 
+// ----------------------------------------------------- asset requests (no invoice)
+export interface AssetRequestItem { name: string; serialNumber: string; manufacturer?: string; model?: string; purchaseDate?: string; purchasePrice?: number; warrantyExpiry?: string; }
+export interface AssetCreationRequest {
+  id: string; siteId: string; assetType: string; items: AssetRequestItem[]; reason: string;
+  status: 'pending' | 'approved' | 'rejected'; requestedByEmail: string; requestedAt: string; decidedAt?: string; decisionNote?: string; createdAssetIds?: string[];
+}
+export async function requestAssetCreation(input: { siteId: string; assetType: string; reason: string; items: AssetRequestItem[] }, companyId = getActiveCompanyId()): Promise<string> {
+  if (!companyId) throw new Error('No company is selected.');
+  const { data, error } = await client().rpc('assetflow_request_asset_creation', { p_company_id: companyId, p_request: input });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+export async function listAssetCreationRequests(companyId = getActiveCompanyId()): Promise<AssetCreationRequest[]> {
+  if (!companyId) return [];
+  const { data, error } = await client().rpc('assetflow_list_asset_creation_requests', { p_company_id: companyId });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r: any) => ({ id: r.id, siteId: r.site_id, assetType: r.asset_type, items: r.items ?? [], reason: r.reason, status: r.status, requestedByEmail: r.requested_by_email ?? '', requestedAt: r.requested_at, decidedAt: r.decided_at ?? undefined, decisionNote: r.decision_note ?? undefined, createdAssetIds: r.created_asset_ids ?? undefined }));
+}
+export async function decideAssetCreation(id: string, approve: boolean, note = ''): Promise<void> {
+  const { error } = await client().rpc('assetflow_decide_asset_creation', { p_request_id: id, p_approve: approve, p_note: note });
+  if (error) throw new Error(error.message);
+}
+
 function bucket(collection: string) {
   let b = cache.get(collection);
   if (!b) cache.set(collection, (b = new Map()));
