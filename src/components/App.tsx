@@ -1,4 +1,5 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { migrateKvStores } from '@/lib/migrateKv';
 import { ConfirmHost } from '@/components/ConfirmHost';
 import { CurrencyIcon } from '@/components/CurrencyIcon';
 import type { Session } from '@supabase/supabase-js';
@@ -109,7 +110,15 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
   const [usersList, setUsersList] = useCollection<User>('users');
   const [sitesList, setSitesList] = useCollection<Location>('locations');
   const [departmentRecords, setDepartmentRecords] = useCollection<DepartmentRecord>('departments');
-  const [assetsList, setAssetsList] = useCollection<Asset>('assets');
+  const [allAssets, setAllAssets] = useCollection<Asset>('assets');
+  // Archived assets stay in the table but pages only ever see (and change) the active ones.
+  const assetsList = useMemo(() => allAssets.filter(a => !a.archivedAt), [allAssets]);
+  const archivedAssets = useMemo(() => allAssets.filter(a => a.archivedAt), [allAssets]);
+  const setAssetsList = (next: Asset[] | ((prev: Asset[]) => Asset[])) => {
+    const active = typeof next === 'function' ? next(assetsList) : next;
+    const kept = new Set(active.map(a => a.id));
+    setAllAssets([...active, ...archivedAssets.filter(a => !kept.has(a.id))]);
+  };
   const [assignmentsList, setAssignmentsList] = useCollection<Assignment>('assignments');
   const [invoicesList, setInvoicesList] = useCollection<Invoice>('invoices');
   const [vendorsList, setVendorsList] = useCollection<Vendor>('vendors');
@@ -254,6 +263,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
         return (
           <AssetsPage
             assetsList={assetsList}
+            archivedAssets={archivedAssets}
             onAssetsChange={setAssetsList}
             usersList={usersList}
             sitesList={sitesList}
@@ -607,6 +617,7 @@ function AppGate() {
         for (const [collection, defaults] of Object.entries(MASTER_DATA_DEFAULTS)) {
           if (getCollection<MasterDataOption>(collection).length === 0) await replaceCollection(collection, defaults);
         }
+        await migrateKvStores();
         if (getCollection<SystemPolicy>('system-policies').length === 0) await replaceCollection('system-policies', [DEFAULT_SYSTEM_POLICY]);
         const email = (session.user.email ?? '').toLowerCase();
         const users = getCollection<User>('users');

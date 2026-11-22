@@ -1,4 +1,4 @@
-import { kv, useCollection } from '@/lib/db';
+import { getCollection, kv, useCollection } from '@/lib/db';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bell, BellRing, CheckCircle2, Package, Wrench, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -72,7 +72,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     callLogs.filter(call=>call.priority==='critical'&&['open','in-progress'].includes(call.status)).forEach(call=>result.push({id:`call-${call.id}`,title:'Critical IT call open',detail:`${call.callerName} • ${call.issue}`,severity:'critical',createdAt:call.date}));
 
     try {
-      const stock = JSON.parse(kv.getItem('assetflow-stock') || '[]');
+      const stock = getCollection<{ id: string; name: string; quantity: number; minQuantity: number }>('stock-items');
       stock.forEach((item: { id: string; name: string; quantity: number; minQuantity: number }) => {
         if (item.quantity <= item.minQuantity) {
           result.push({
@@ -87,7 +87,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     } catch {}
 
     try {
-      const infra = JSON.parse(kv.getItem('assetflow-infrastructure') || '[]');
+      const infra = getCollection<{ id: string; name: string; status: string }>('infrastructure');
       infra.forEach((item: { id: string; name: string; status: string }) => {
         if (item.status === 'offline') {
           result.push({
@@ -102,7 +102,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     } catch {}
 
     try {
-      const requests = JSON.parse(kv.getItem('assetflow-asset-requests') || '[]');
+      const requests = getCollection<{ id: string; assetType: string; status: string }>('asset-requests');
       requests.forEach((item: { id: string; assetType: string; status: string }) => {
         if (item.status === 'pending') {
           result.push({
@@ -117,7 +117,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     } catch {}
 
     try {
-      const maintenance = JSON.parse(kv.getItem('assetflow-maintenance') || '[]');
+      const maintenance = getCollection<{ id: string; assetId: string; status: string }>('maintenance');
       maintenance.forEach((item: { id: string; assetId: string; status: string }) => {
         if (item.status === 'open' || item.status === 'in-progress') {
           const asset = assets.find(a => a.id === item.assetId);

@@ -10,7 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { DEFAULT_ASSET_CATEGORIES } from '@/data/assetCategories';
 import type { Asset, AssetCategory, Location } from '@/data/models';
-import { getCollection, kv, loadAssetTagSiteSeries, saveAssetTagSiteSeries, setAssetTagFormat, useCollection, type AssetTagSiteSeries, type TagSeparator } from '@/lib/db';
+import { buildTag, highestUsedNumber, pad } from '@/lib/assetTag';
+import { getCollection, loadAssetTagSiteSeries, saveAssetTagSiteSeries, setAssetTagFormat, useCollection, type AssetTagSiteSeries, type TagSeparator } from '@/lib/db';
 
 const clean = (v: string, max: number) => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, max);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'type';
@@ -18,9 +19,7 @@ const lower = (v: string) => v.trim().toLowerCase();
 
 /** All assets of the company, including archived ones (their tags are still taken). */
 function allAssets(): Asset[] {
-  let archived: Asset[] = [];
-  try { archived = JSON.parse(kv.getItem('assetflow-archived-assets') || '[]'); } catch { /* ignore */ }
-  return [...getCollection<Asset>('assets'), ...archived];
+  return getCollection<Asset>('assets');
 }
 
 /* ───────────────────────── page ───────────────────────── */
@@ -151,8 +150,7 @@ function TextCell({ value, onCommit, transform, mono, placeholder, ...rest }: { 
 /* ───────────────────────── step 2: numbering per site ───────────────────────── */
 
 type Draft = Omit<AssetTagSiteSeries, 'id'> & { id?: string };
-const pad = (n: number, digits: number) => String(n).padStart(digits, '0');
-const tagOf = (d: Draft, typeCode: string, n = d.nextNumber) => [d.companyPrefix, d.useFunctionPrefix ? d.functionPrefix : '', typeCode, `${d.series}${pad(n, d.digits)}`].filter(Boolean).join(d.separator);
+const tagOf = (d: Draft, typeCode: string, n = d.nextNumber) => buildTag(d, typeCode, n);
 
 const SEPARATORS: Array<{ value: TagSeparator; label: string }> = [
   { value: '-', label: 'Hyphen  -' },
@@ -209,13 +207,7 @@ function NumberingBySite() {
     if (draft.digits < 1 || draft.digits > 8) out.push('Digits must be between 1 and 8.');
     if (String(draft.nextNumber).length > draft.digits) out.push(`Number ${draft.nextNumber} needs more than ${draft.digits} digits.`);
     // Collisions with assets that already carry this series at this site.
-    const head = draft.companyPrefix;
-    let highest = 0;
-    for (const a of allAssets()) {
-      if (a.siteId !== draft.siteId || !a.assetTag?.toUpperCase().startsWith(head)) continue;
-      const m = a.assetTag.toUpperCase().match(new RegExp(`-${draft.series}(\\d+)$`));
-      if (m) highest = Math.max(highest, Number(m[1]));
-    }
+    const highest = highestUsedNumber(allAssets(), draft.siteId, draft.companyPrefix, draft.series);
     if (highest >= draft.nextNumber && draft.companyPrefix) out.push(`Assets at this site already use up to ${draft.series}${pad(highest, draft.digits)}. Next number must be at least ${highest + 1}.`);
     // Same prefixes and series used at another site would hand out duplicate tags.
     const clash = (rules || []).find(r => r.siteId !== draft.siteId && r.active && draft.active && r.companyPrefix === draft.companyPrefix && (!draft.useFunctionPrefix || r.functionPrefix === draft.functionPrefix) && r.series === draft.series);

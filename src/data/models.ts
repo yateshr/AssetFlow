@@ -91,7 +91,10 @@ export type AssetHistoryAction =
   | 'Retired'
   | 'Disposed'
   | 'Lost'
-  | 'Found';
+  | 'Found'
+  | 'Archived'
+  | 'Restored'
+  | 'Updated';
 export type ItCallStatus = 'open' | 'in-progress' | 'resolved' | 'closed';
 export type ItCallPriority = string;
 export type ItCallCategory = string;
@@ -120,6 +123,9 @@ export interface Asset {
   invoiceId?: string;
   invoiceItemId?: string;
   notes?: string;
+  /** Set when the asset is archived. Archived assets stay in the assets table (so reports, tag and serial checks still see them) but are hidden from the active list. */
+  archivedAt?: string;
+  archivedBy?: string;
 }
 
 export interface User {

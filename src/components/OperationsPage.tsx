@@ -58,12 +58,18 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
   const [policies]=useCollection<SystemPolicy>('system-policies');
   const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [tab, setTab] = useState(initialTab);
-  const [requests, setRequests] = useState<AssetRequest[]>(requestSeed);
-  const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
-  const [stock, setStock] = useState<StockItem[]>(defaultStock);
-  const [movements, setMovements] = useState<StockMovement[]>([]);
-  const [specs, setSpecs] = useState<Record<string, DeviceSpec>>({});
-  const [infra, setInfra] = useState<Infrastructure[]>(defaultInfra);
+  // One database row per record (not one shared text value), so people editing at the same time cannot overwrite each other.
+  const [requests, setRequests] = useCollection<AssetRequest>('asset-requests');
+  const [maintenance, setMaintenance] = useCollection<MaintenanceRecord>('maintenance');
+  const [stock, setStock] = useCollection<StockItem>('stock-items');
+  const [movements, setMovements] = useCollection<StockMovement>('stock-movements');
+  const [specList, setSpecList] = useCollection<DeviceSpec & { id: string }>('device-specs');
+  const specs = useMemo(() => Object.fromEntries(specList.map(s => [s.assetId, s])) as Record<string, DeviceSpec>, [specList]);
+  const setSpecs = (update: Record<string, DeviceSpec> | ((prev: Record<string, DeviceSpec>) => Record<string, DeviceSpec>)) => {
+    const next = typeof update === 'function' ? update(specs) : update;
+    setSpecList(Object.values(next).map(s => ({ ...s, id: s.assetId })));
+  };
+  const [infra, setInfra] = useCollection<Infrastructure>('infrastructure');
   const [notificationsRead, setNotificationsRead] = useState<Record<string, boolean>>({});
   const [showRequest, setShowRequest] = useState(false);
   const [showSpec, setShowSpec] = useState(false);
@@ -93,31 +99,10 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
         const raw = kv.getItem(key);
         return raw ? JSON.parse(raw) : fallback;
       };
-      setRequests(read('assetflow-asset-requests', requestSeed));
-      setMaintenance(read('assetflow-maintenance', []));
-      setStock(read('assetflow-stock', defaultStock));
-      setMovements(read('assetflow-stock-movements', []));
-      const savedSpecs = read<Record<string, DeviceSpec>>('assetflow-device-specs', {});
-      const normalizedSpecs = { ...savedSpecs };
-      assetsList.forEach(asset => {
-        normalizedSpecs[asset.id] = {
-          ...blankSpec(asset.id),
-          ...(savedSpecs[asset.id] || {}),
-          enabled: true,
-        };
-      });
-      setSpecs(normalizedSpecs);
-      setInfra(read('assetflow-infrastructure', defaultInfra));
       setNotificationsRead(read('assetflow-notifications-read', {}));
     } catch {}
   }, []);
 
-  useEffect(() => { kv.setItem('assetflow-asset-requests', JSON.stringify(requests)); }, [requests]);
-  useEffect(() => { kv.setItem('assetflow-maintenance', JSON.stringify(maintenance)); }, [maintenance]);
-  useEffect(() => { kv.setItem('assetflow-stock', JSON.stringify(stock)); }, [stock]);
-  useEffect(() => { kv.setItem('assetflow-stock-movements', JSON.stringify(movements)); }, [movements]);
-  useEffect(() => { kv.setItem('assetflow-device-specs', JSON.stringify(specs)); }, [specs]);
-  useEffect(() => { kv.setItem('assetflow-infrastructure', JSON.stringify(infra)); }, [infra]);
   useEffect(() => { kv.setItem('assetflow-notifications-read', JSON.stringify(notificationsRead)); }, [notificationsRead]);
   useEffect(() => { setTab(initialTab); }, [initialTab]);
 

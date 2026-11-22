@@ -113,10 +113,7 @@ export async function applyWorkbookImport(data: WorkbookImport) {
   await replaceCollection('invoices', merge(getCollection<Invoice>('invoices'), data.invoices, item => item.id));
   await replaceCollection('call-logs', merge(getCollection<ItCallLog>('call-logs'), data.callLogs, item => item.id));
   if (data.stock.length) {
-    const current = JSON.parse(kv.getItem('assetflow-stock') || '[]') as typeof data.stock;
-    kv.setItem('assetflow-stock', JSON.stringify(merge(current, data.stock, item => item.id)));
-    const { flushKv } = await import('@/lib/db');
-    flushKv();
+    await replaceCollection('stock-items', merge(getCollection<typeof data.stock[number]>('stock-items'), data.stock, item => item.id));
   }
   await pendingWrites();
 }

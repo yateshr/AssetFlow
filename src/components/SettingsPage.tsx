@@ -94,7 +94,7 @@ const LISTS: Record<string, ListDef> = {
     title: 'Infrastructure types', keyedBy: 'id', usedIn: 'Operations → Infrastructure',
     help: 'Kinds of network and server equipment.',
     usage: item => {
-      try { return (JSON.parse(kv.getItem('assetflow-infrastructure') || '[]') as Row[]).filter(r => r.type === item.id).length; } catch { return 0; }
+      return countWhere('infrastructure', r => r.type === item.id);
     },
   },
 };

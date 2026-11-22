@@ -19,7 +19,10 @@
     "db:migrate": "supabase migration up --local",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
-    "db:studio": "supabase status"
+    "db:studio": "supabase status",
+    "test": "vitest run",
+    "test:db": "node scripts/test-db.mjs",
+    "test:all": "vitest run && node scripts/test-db.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "8.1.5",
@@ -84,6 +87,9 @@
   },
   "devDependencies": {
     "@types/jsbarcode": "^3.11.4",
-    "@types/qrcode": "^1.5.6"
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "pg": "^8.23.1",
+    "vitest": "^5.1.1"
   }
 }

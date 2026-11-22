@@ -30,13 +30,11 @@ export async function loadDemoData() {
   await replaceCollection('history', demo.assetHistory);
   await replaceCollection('call-logs', demo.itCallLogs);
 
-  kv.setItem('assetflow-maintenance', JSON.stringify(demo.maintenanceRecords));
-  kv.setItem('assetflow-stock', JSON.stringify([
+  await replaceCollection('maintenance', demo.maintenanceRecords);
+  await replaceCollection('stock-items', [
     { id: 'STK-001', name: 'USB-C Dock', sku: 'DOCK-001', category: 'Accessories', quantity: 12, minQuantity: 5, unitCost: 85, location: 'IT Store' },
     { id: 'STK-002', name: 'Wireless Mouse', sku: 'MOU-001', category: 'Accessories', quantity: 24, minQuantity: 10, unitCost: 25, location: 'IT Store' },
-  ]));
-  const { flushKv } = await import('./db');
-  flushKv();
+  ]);
   await pendingWrites();
 }
 

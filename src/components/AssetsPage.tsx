@@ -1,4 +1,5 @@
 import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
+import { getDeviceSpec, saveDeviceSpec } from '@/lib/deviceSpecs';
 import { masterLabel } from '@/lib/masterLabel';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
@@ -59,6 +60,7 @@ import {
 
 interface AssetsPageProps {
   assetsList: Asset[];
+  archivedAssets: Asset[];
   onAssetsChange: (assets: Asset[]) => void;
   usersList: User[];
   sitesList: Location[];
@@ -76,6 +78,7 @@ interface AssetsPageProps {
 
 export function AssetsPage({
   assetsList,
+  archivedAssets,
   onAssetsChange,
   usersList,
   sitesList,
@@ -104,13 +107,7 @@ export function AssetsPage({
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const [archivedAssets, setArchivedAssets] = useState<(Asset & { deletedAt: string; deletedBy?: string })[]>(() => {
-    try {
-      if (typeof window === 'undefined') return [];
-      return JSON.parse(kv.getItem('assetflow-archived-assets') || '[]');
-    } catch { return []; }
-  });
-  const [undoAsset, setUndoAsset] = useState<(Asset & { deletedAt: string; deletedBy?: string }) | null>(null);
+  const [undoAsset, setUndoAsset] = useState<Asset | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -198,20 +195,14 @@ export function AssetsPage({
     return variants[status];
   };
 
-  const persistArchived = (items: (Asset & { deletedAt: string; deletedBy?: string })[]) => {
-    setArchivedAssets(items);
-    kv.setItem('assetflow-archived-assets', JSON.stringify(items));
-  };
-
   const handleDelete = async (id: string) => {
     const asset = assets.find(a => a.id === id);
     if (!asset) return;
     if (!(await confirmDialog({ title: 'Archive asset?', message: `Archive ${asset.name} (${asset.assetTag})? The asset will be removed from active lists but can be restored.`, confirmLabel: 'Archive' }))) return;
 
-    const archived = { ...asset, deletedAt: new Date().toISOString(), deletedBy: currentUser.id };
-    const nextArchived = [archived, ...archivedAssets.filter(a => a.id !== id)];
-    persistArchived(nextArchived);
-    onAssetsChange(assets.filter(a => a.id !== id));
+    const archived: Asset = { ...asset, archivedAt: new Date().toISOString(), archivedBy: currentUser.id };
+    // One write: the asset keeps its row and is marked archived.
+    onAssetsChange(assets.map(a => (a.id === id ? archived : a)));
     onHistoryChange([
       ...history,
       {
@@ -233,7 +224,7 @@ export function AssetsPage({
     window.setTimeout(() => setUndoAsset(current => current?.id === id ? null : current), 8000);
   };
 
-  const restoreAsset = async (archived: Asset & { deletedAt: string; deletedBy?: string }) => {
+  const restoreAsset = async (archived: Asset) => {
     const conflict = assets.find(a => a.id !== archived.id && (
       a.assetTag.trim().toLowerCase() === archived.assetTag.trim().toLowerCase() ||
       a.serialNumber.trim().toLowerCase() === archived.serialNumber.trim().toLowerCase()
@@ -243,9 +234,9 @@ export function AssetsPage({
       return;
     }
     if (!(await confirmDialog({ title: 'Restore asset?', message: `Restore ${archived.name} (${archived.assetTag}) to active assets?`, confirmLabel: 'Restore' }))) return;
-    const restored = archivedAssets.filter(a => a.id !== archived.id);
-    persistArchived(restored);
-    onAssetsChange([...assets, { ...archived }]);
+    const { archivedAt: _a, archivedBy: _b, ...active } = archived;
+    onAssetsChange([...assets, active as Asset]);
+    setUndoAsset(current => (current?.id === archived.id ? null : current));
     onHistoryChange([
       ...history,
       {
@@ -572,7 +563,7 @@ export function AssetsPage({
                 <Archive className="h-4 w-4 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{asset.name} <span className="font-mono text-xs text-muted-foreground">({asset.assetTag})</span></p>
-                  <p className="text-xs text-muted-foreground">Archived {new Date(asset.deletedAt).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Archived {asset.archivedAt ? new Date(asset.archivedAt).toLocaleString() : ''}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => restoreAsset(asset)}>
                   <RotateCcw className="h-4 w-4 mr-2" /> Restore
@@ -658,11 +649,7 @@ export function AssetsPage({
               if (editingAsset) {
                 const previous = assets.find(a => a.id === editingAsset.id);
                 onAssetsChange(assets.map(a => a.id === editingAsset.id ? { ...a, ...normalizedData } : a));
-                try {
-                  const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
-                  saved[editingAsset.id] = { ...detailedProfile, assetId: editingAsset.id, enabled: detailedProfile.enabled };
-                  kv.setItem('assetflow-device-specs', JSON.stringify(saved));
-                } catch {}
+                void saveDeviceSpec(editingAsset.id, { ...detailedProfile, enabled: detailedProfile.enabled });
                 if (previous) {
                   const events = [];
                   if (previous.assignedTo !== normalizedData.assignedTo) {
@@ -729,11 +716,7 @@ export function AssetsPage({
                 }
                 onAssetsChange([...assets, newAsset]);
                 void loadAssetTagSiteSeries().then(setAssetTagRules);
-                try {
-                  const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
-                  saved[newAsset.id] = { ...detailedProfile, assetId: newAsset.id, enabled: detailedProfile.enabled };
-                  kv.setItem('assetflow-device-specs', JSON.stringify(saved));
-                } catch {}
+                void saveDeviceSpec(newAsset.id, { ...detailedProfile, enabled: detailedProfile.enabled });
                 onHistoryChange([
                   ...history,
                   {
@@ -944,23 +927,13 @@ function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules
   const [detailedProfileEnabled, setDetailedProfileEnabled] = useState(true);
   const [profile, setProfile] = useState<DetailedProfileDraft>(() => {
     if (!asset) return emptyDetailedProfile();
-    try {
-      const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
-      return { ...emptyDetailedProfile(), ...(saved[asset.id] || {}), enabled: true };
-    } catch {
-      return emptyDetailedProfile();
-    }
+    return { ...emptyDetailedProfile(), ...(getDeviceSpec(asset.id) || {}), enabled: true } as DetailedProfileDraft;
   });
 
   useEffect(() => {
     setDetailedProfileEnabled(true);
     if (asset) {
-      try {
-        const saved = JSON.parse(kv.getItem('assetflow-device-specs') || '{}');
-        setProfile({ ...emptyDetailedProfile(), ...(saved[asset.id] || {}), enabled: true });
-      } catch {
-        setProfile(emptyDetailedProfile());
-      }
+      setProfile({ ...emptyDetailedProfile(), ...(getDeviceSpec(asset.id) || {}), enabled: true } as DetailedProfileDraft);
     } else {
       setProfile(emptyDetailedProfile());
     }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getDeviceSpecMap } from '@/lib/deviceSpecs';
 import { AlertTriangle, Printer, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,7 +67,7 @@ function shortDate(value?: string) {
 type SpecRecord = { os?: string; cpu?: string; ram?: string; storage?: string };
 
 function readSpecs(): Record<string, SpecRecord> {
-  try { return JSON.parse(kv.getItem('assetflow-device-specs') || '{}'); } catch { return {}; }
+  return getDeviceSpecMap<SpecRecord>();
 }
 
 export function buildLabelData(asset: Asset, s: Settings, users: User[], specs: Record<string, SpecRecord>): LabelData {

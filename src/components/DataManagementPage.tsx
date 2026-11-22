@@ -62,7 +62,7 @@ export function DataManagementPage({ isAdmin, onLoadDemoData, onEraseAllData }: 
   };
 
   const downloadBackup = () => {
-    const collections=['users','locations','departments','vendors','asset-categories','assets','invoices','assignments','history','call-logs','licenses','audit-logs'];
+    const collections=['users','locations','departments','vendors','asset-categories','assets','invoices','assignments','history','call-logs','licenses','audit-logs','maintenance','device-specs','stock-items','stock-movements','infrastructure','asset-requests'];
     const backup={version:1,createdAt:new Date().toISOString(),collections:Object.fromEntries(collections.map(name=>[name,getCollection(name)]))};
     const url=URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:'application/json'}));
     const link=document.createElement('a'); link.href=url; link.download=`assetflow-backup-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url);

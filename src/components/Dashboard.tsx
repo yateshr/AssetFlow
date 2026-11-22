@@ -64,9 +64,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
   const [softwareLicenses] = useCollection<SoftwareLicense>('licenses');
   const [policies]=useCollection<SystemPolicy>('system-policies');
   const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
-  const maintenanceRecords: { status?: string }[] = (() => {
-    try { return JSON.parse(kv.getItem('assetflow-maintenance') || '[]'); } catch { return []; }
-  })();
+  const [maintenanceRecords] = useCollection<{ id: string; status?: string }>('maintenance');
   const assets = assetsList;
   const users = usersList;
   const assignments = assignmentsList;

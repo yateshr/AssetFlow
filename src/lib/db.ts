@@ -210,6 +210,15 @@ export function getCollection<T>(collection: string): T[] {
   return Array.from(bucket(collection).values()) as T[];
 }
 
+/** Add or update records without touching the rest of the collection. */
+export async function upsertIntoCollection<T extends Doc>(collection: string, items: T[]) {
+  if (!items.length) return;
+  const b = bucket(collection);
+  items.forEach(i => b.set(i.id, i));
+  upsertRows(collection, items);
+  await queue;
+}
+
 /** Replace a whole collection (used by the demo-data importer). */
 export async function replaceCollection<T extends Doc>(collection: string, items: T[]) {
   const b = bucket(collection);
