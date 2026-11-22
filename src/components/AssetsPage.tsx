@@ -1,7 +1,8 @@
 import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
 import { useCollection } from '@/lib/db';
+const LabelPrintDialog = lazy(() => import('./LabelPrintDialog').then(m => ({ default: m.LabelPrintDialog })));
 import type { MasterDataOption } from '@/data/masterData';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { 
   Plus, 
   Search, 
@@ -62,6 +63,8 @@ interface AssetsPageProps {
   currentUser: User;
   initialFilter?: { status?: AssetStatus; warranty?: 'expired' | '30' | '60' | '90'; type?: AssetType } | null;
   onInitialFilterConsumed?: () => void;
+  initialSearch?: string | null;
+  onInitialSearchConsumed?: () => void;
   assetCategories: AssetCategory[];
   invoices: Invoice[];
   companies: Company[];
@@ -77,12 +80,18 @@ export function AssetsPage({
   currentUser,
   initialFilter,
   onInitialFilterConsumed,
+  initialSearch,
+  onInitialSearchConsumed,
   assetCategories,
   invoices,
   companies,
 }: AssetsPageProps) {
   const assets = assetsList;
   const [searchQuery, setSearchQuery] = useState('');
+  const [labelAssets, setLabelAssets] = useState<Asset[] | null>(null);
+  useEffect(() => {
+    if (initialSearch) { setSearchQuery(initialSearch); onInitialSearchConsumed?.(); }
+  }, [initialSearch]);
   const [statusFilter, setStatusFilter] = useState<AssetStatus | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all');
   const [warrantyFilter, setWarrantyFilter] = useState<'all' | 'expired' | '30' | '60' | '90'>('all');
@@ -311,6 +320,10 @@ export function AssetsPage({
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
+          <Button variant="outline" onClick={() => setLabelAssets(filteredAssets)} disabled={filteredAssets.length === 0}>
+            <Printer className="h-4 w-4 mr-2" />
+            Print labels
+          </Button>
           <Button variant="outline" onClick={() => setShowArchived(true)}>
             <Archive className="h-4 w-4 mr-2" />
             Archived ({archivedAssets.length})
@@ -446,7 +459,7 @@ export function AssetsPage({
                     <p className="truncate font-semibold">{asset.name}</p>
                     <p className="mt-0.5 font-mono text-xs text-muted-foreground">{asset.assetTag} · {asset.manufacturer} {asset.model}</p>
                   </button>
-                  <AssetActionMenu asset={asset} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
+                  <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge variant="outline" className={getStatusBadge(asset.status)}>{asset.status === 'maintenance' ? 'Under Repair' : asset.status}</Badge>
@@ -530,7 +543,7 @@ export function AssetsPage({
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => setViewingAsset(asset)}><Eye className="mr-1.5 h-4 w-4" />View</Button>
-                          <AssetActionMenu asset={asset} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
+                          <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -588,6 +601,7 @@ export function AssetsPage({
       <AssetTransferDialog asset={transferringAsset} companies={companies.filter(c=>c.active&&c.id!==getActiveCompanyId())} onClose={()=>setTransferringAsset(null)} onTransfer={async(targetCompanyId,newAssetTag,reason)=>{if(!transferringAsset)return;try{await transferAsset({sourceCompanyId:getActiveCompanyId()!,targetCompanyId,assetId:transferringAsset.id,newAssetTag,reason});window.location.reload();}catch(error){if(!(error instanceof Error)||!error.message.includes('Only the Super Admin'))throw error;await requestTransfer({requestType:'asset',sourceCompanyId:getActiveCompanyId()!,sourceSiteId:transferringAsset.siteId,targetCompanyId,entityId:transferringAsset.id,newAssetTag,reason});}}} />
       <MoveAssetDialog asset={movingAsset} locations={sitesList} onClose={()=>setMovingAsset(null)} onMove={async(targetSiteId,reason)=>{const companyId=getActiveCompanyId();if(!movingAsset||!companyId)return;if(movingAsset.assignedTo)throw new Error('Return this assigned asset before moving it to another site.');if(['super_admin','admin'].includes(currentUser.role)){onAssetsChange(assets.map(asset=>asset.id===movingAsset.id?{...asset,siteId:targetSiteId,status:'available'}:asset));onHistoryChange([...history,{id:`H-${Date.now()}-MOVE`,assetId:movingAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:movingAsset.siteId,to:targetSiteId,siteId:targetSiteId,reason,notes:'Asset moved by Super Admin.'}]);}else{await requestTransfer({requestType:'asset',sourceCompanyId:companyId,sourceSiteId:movingAsset.siteId,targetCompanyId:companyId,targetSiteId,entityId:movingAsset.id,newAssetTag:movingAsset.assetTag,reason});}}} />
       <ReverseReceiptDialog asset={reversingReceipt} onClose={()=>setReversingReceipt(null)} onReverse={async(reason)=>{if(!reversingReceipt)return;const updated=await reverseInvoiceReceipt(reversingReceipt.id,reason) as Asset;onAssetsChange(assets.map(asset=>asset.id===updated.id?updated:asset));onHistoryChange([...history,{id:`H-${Date.now()}-RECEIPT-REVERSED`,assetId:updated.id,timestamp:new Date().toISOString(),action:'Updated',performedBy:currentUser.id,reason,notes:'Invoice receipt reversed by Super Admin.'}]);}} />
+      {labelAssets && <Suspense fallback={null}><LabelPrintDialog assets={assets} initialSelection={labelAssets} users={usersList} onClose={() => setLabelAssets(null)} /></Suspense>}
 
       {/* Create/Edit workspace */}
       <Dialog open={showCreateModal || !!editingAsset} onOpenChange={(open) => {
@@ -842,6 +856,7 @@ function AssetActionMenu({
   onMove,
   onTransfer,
   onReverseReceipt,
+  onLabel,
   onArchive,
   hideView = false,
 }: {
@@ -852,6 +867,7 @@ function AssetActionMenu({
   onMove: () => void;
   onTransfer: () => void;
   onReverseReceipt?: () => void;
+  onLabel?: () => void;
   onArchive: () => void;
   hideView?: boolean;
 }) {
@@ -864,6 +880,7 @@ function AssetActionMenu({
         {!hideView && <DropdownMenuItem onSelect={onView}><Eye />View details</DropdownMenuItem>}
         <DropdownMenuItem onSelect={onEdit}><Edit />Edit asset</DropdownMenuItem>
         <DropdownMenuItem onSelect={onHistory}><History />View history</DropdownMenuItem>
+        {onLabel&&<DropdownMenuItem onSelect={onLabel}><Printer />Print label</DropdownMenuItem>}
         <DropdownMenuItem onSelect={onMove}><History />Move to site</DropdownMenuItem>
         <DropdownMenuItem onSelect={onTransfer}><Building2 />Transfer to another company</DropdownMenuItem>
         {onReverseReceipt&&<DropdownMenuItem onSelect={onReverseReceipt}>Reverse invoice receipt</DropdownMenuItem>}

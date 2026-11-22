@@ -117,7 +117,11 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
   const [assetCategories, setAssetCategories] = useCollection<AssetCategory>('asset-categories');
   const departmentsList = Array.from(new Set(departmentRecords.map(d => d.name)));
   const setDepartmentsList = (names: string[]) => setDepartmentRecords(names.map(name => ({ id: crypto.randomUUID(), name })));
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  // Scanning a label QR code opens the app at /?asset=TAG: jump straight to that asset.
+  const [assetSearchRequest, setAssetSearchRequest] = useState<string | null>(() => {
+    try { return new URLSearchParams(window.location.search).get('asset'); } catch { return null; }
+  });
+  const [currentPage, setCurrentPage] = useState<Page>(() => (assetSearchRequest ? 'assets' : 'dashboard'));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [operationsTab, setOperationsTab] = useState('overview');
   const [notificationCount, setNotificationCount] = useState(0);
@@ -260,6 +264,8 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
             companies={companies}
             initialFilter={assetFilterRequest}
             onInitialFilterConsumed={() => setAssetFilterRequest(null)}
+            initialSearch={assetSearchRequest}
+            onInitialSearchConsumed={() => { setAssetSearchRequest(null); try { window.history.replaceState(null, '', window.location.pathname); } catch { /* ignore */ } }}
           />
         );
       case 'call-logs':
