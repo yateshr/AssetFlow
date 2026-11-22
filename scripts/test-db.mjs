@@ -19,9 +19,9 @@ await client.connect();
 
 const ids = () => ({
   ws: randomUUID(), A: randomUUID(), B: randomUUID(),
-  admin: randomUUID(), userA: randomUUID(), userB: randomUUID(),
+  admin: randomUUID(), userA: randomUUID(), userB: randomUUID(), site: randomUUID(),
   // Unique per test run so they never collide with real accounts in the local database.
-  emailAdmin: `admin-${randomUUID()}@test.invalid`, emailA: `a-${randomUUID()}@test.invalid`, emailB: `b-${randomUUID()}@test.invalid`,
+  emailAdmin: `admin-${randomUUID()}@test.invalid`, emailA: `a-${randomUUID()}@test.invalid`, emailB: `b-${randomUUID()}@test.invalid`, emailSite: `site-${randomUUID()}@test.invalid`,
 });
 
 /** Two companies, an administrator, and one manager in each company. */
@@ -31,13 +31,16 @@ async function fixtures(q) {
   await q(`set local session_replication_role = replica`); // skip signup triggers while inserting fixtures
   await q(`insert into workspaces(id,name) values($1,'Test workspace')`, [f.ws]);
   await q(`insert into companies(id,workspace_id,name,code) values($1,$3,'Company A','TA'),($2,$3,'Company B','TB')`, [f.A, f.B, f.ws]);
-  for (const [uid, email] of [[f.admin, f.emailAdmin], [f.userA, f.emailA], [f.userB, f.emailB]]) {
+  for (const [uid, email] of [[f.admin, f.emailAdmin], [f.userA, f.emailA], [f.userB, f.emailB], [f.site, f.emailSite]]) {
     await q(`insert into auth.users(id,email,aud,role) values($1,$2,'authenticated','authenticated')`, [uid, email]);
   }
   await q(`insert into company_members(company_id,auth_user_id,role) values($1,$3,'manager'),($2,$4,'manager')`, [f.A, f.B, f.userA, f.userB]);
   await q(`insert into app_users(company_id,id,data) values($1,'fx-admin',$2::jsonb)`, [f.A, JSON.stringify({ id: 'fx-admin', name: 'Admin', email: f.emailAdmin, role: 'admin', status: 'active' })]);
-  await q(`insert into locations(company_id,id,data) values($1,'SITE-A1','{"id":"SITE-A1","name":"Site A1"}'),($2,'SITE-B1','{"id":"SITE-B1","name":"Site B1"}')`, [f.A, f.B]);
-  await q(`insert into assets(company_id,id,data) values($1,'AST-A1','{"id":"AST-A1","assetTag":"TA-A1","serialNumber":"SA1","name":"A1"}'),($2,'AST-B1','{"id":"AST-B1","assetTag":"TB-B1","serialNumber":"SB1","name":"B1"}')`, [f.A, f.B]);
+  await q(`insert into locations(company_id,id,data) values($1,'SITE-A1','{"id":"SITE-A1","name":"Site A1"}'),($1,'SITE-A2','{"id":"SITE-A2","name":"Site A2"}'),($2,'SITE-B1','{"id":"SITE-B1","name":"Site B1"}')`, [f.A, f.B]);
+  // A site IT admin: manager for company A, limited to SITE-A1.
+  await q(`insert into company_access_grants(company_id,email,role,site_id,active) values($1,$2,'manager','SITE-A1',true)`, [f.A, f.emailSite]);
+  await q(`insert into assets(company_id,id,data) values($1,'AST-A1','{"id":"AST-A1","assetTag":"TA-A1","serialNumber":"SA1","name":"A1","siteId":"SITE-A1","location":"SITE-A1"}'),($1,'AST-A2','{"id":"AST-A2","assetTag":"TA-A2","serialNumber":"SA2","name":"A2","siteId":"SITE-A2","location":"SITE-A2"}'),($2,'AST-B1','{"id":"AST-B1","assetTag":"TB-B1","serialNumber":"SB1","name":"B1"}')`, [f.A, f.B]);
+  await q(`insert into invoices(company_id,id,data) values($1,'INV-A1','{"id":"INV-A1","siteId":"SITE-A1","locationId":"SITE-A1","lineItems":[]}'),($1,'INV-A2','{"id":"INV-A2","siteId":"SITE-A2","locationId":"SITE-A2","lineItems":[]}')`, [f.A]);
   await q(`set local session_replication_role = origin`);
   return f;
 }
@@ -163,6 +166,70 @@ test('a manager cannot create tagged assets in another company', async (q, f) =>
   await setUpSeries(q, f);
   await as(q, f.userB, f.emailB);
   await rejects(q(`select assetflow_create_tagged_assets(p_company_id => $1, p_site_id => 'SITE-A1', p_type_code => 'LAP', p_assets => $2::jsonb, p_invoice_id => null, p_invoice_item_id => null)`, [f.A, JSON.stringify([newAsset('X1', 'S-X')])]), /only create assets|not allowed/i);
+});
+
+// ----------------------------------------------------------------- site IT admin (limited to one plant)
+const asSite = (q, f) => as(q, f.site, f.emailSite);
+const assetJson = (id, site, extra = {}) => JSON.stringify([{ id, assetTag: 'T-' + id, serialNumber: 'sn-' + id, siteId: site, location: site, name: id, status: 'available', ...extra }]);
+const existsRow = async (q, table, f, id) => { await asSuper(q); const r = await q(`select 1 from ${table} where company_id=$1 and id=$2`, [f.A, id]); await asSite(q, f); return r.rowCount === 1; };
+
+test('a site admin sees only their own plant', async (q, f) => {
+  await asSite(q, f);
+  const { rows } = await q(`select collection,id from assetflow_read_company_records($1) where collection in ('assets','invoices','locations')`, [f.A]);
+  const ids = rows.map(r => r.id).sort().join();
+  assert(ids === 'AST-A1,INV-A1,SITE-A1', `expected only plant A1 data, saw: ${ids}`);
+});
+
+test('a site admin can change assets at their own plant', async (q, f) => {
+  await asSite(q, f);
+  await q(`select assetflow_upsert_company_records($1,'assets',$2::jsonb)`, [f.A, assetJson('AST-A1', 'SITE-A1', { name: 'renamed' })]);
+  await asSuper(q);
+  const { rows } = await q(`select data->>'name' as n from assets where company_id=$1 and id='AST-A1'`, [f.A]);
+  assert(rows[0].n === 'renamed', 'the change should be saved');
+});
+
+test("a site admin cannot change or take over another plant's asset", async (q, f) => {
+  await asSite(q, f);
+  await rejects(q(`select assetflow_upsert_company_records($1,'assets',$2::jsonb)`, [f.A, assetJson('AST-A2', 'SITE-A2', { name: 'hacked' })]), /assigned site|another site/i);
+  // Saving the other plant's asset again with MY site must not move it over.
+  await rejects(q(`select assetflow_upsert_company_records($1,'assets',$2::jsonb)`, [f.A, assetJson('AST-A2', 'SITE-A1')]), /assigned site|another site/i);
+  assert(await existsRow(q, 'assets', f, 'AST-A2'), "the other plant's asset must be untouched");
+});
+
+test("a site admin cannot delete other plants' assets, invoices or sites", async (q, f) => {
+  await asSite(q, f);
+  await rejects(q(`select assetflow_delete_company_records($1,'assets',$2)`, [f.A, ['AST-A2']]), /assigned site/i);
+  await rejects(q(`select assetflow_delete_company_records($1,'invoices',$2)`, [f.A, ['INV-A2']]), /assigned site/i);
+  await rejects(q(`select assetflow_delete_company_records($1,'locations',$2)`, [f.A, ['SITE-A2']]), /assigned site/i);
+  for (const [table, id] of [['assets', 'AST-A2'], ['invoices', 'INV-A2'], ['locations', 'SITE-A2']]) assert(await existsRow(q, table, f, id), `${table} ${id} must still exist`);
+});
+
+test('a site admin can delete records of their own plant', async (q, f) => {
+  await asSite(q, f);
+  await q(`select assetflow_delete_company_records($1,'invoices',$2)`, [f.A, ['INV-A1']]);
+  assert(!(await existsRow(q, 'invoices', f, 'INV-A1')), 'own-plant invoice should be deleted');
+});
+
+test('a site admin cannot create a site or change company-wide settings', async (q, f) => {
+  await asSite(q, f);
+  await rejects(q(`select assetflow_upsert_company_records($1,'locations',$2::jsonb)`, [f.A, JSON.stringify([{ id: 'SITE-NEW', name: 'New' }])]), /another site|assigned site/i);
+  await rejects(q(`select assetflow_upsert_company_records($1,'asset-categories',$2::jsonb)`, [f.A, JSON.stringify([{ id: 'x', name: 'X', active: true }])]), /not allowed/i);
+  await rejects(q(`select assetflow_upsert_company_records($1,'currencies',$2::jsonb)`, [f.A, JSON.stringify([{ id: 'ZZZ', name: 'ZZZ', active: true }])]), /not allowed/i);
+});
+
+test('nobody except an administrator can delete the audit trail', async (q, f) => {
+  await asSuper(q);
+  await q(`insert into asset_history(company_id,id,data) values($1,'H1','{"id":"H1","assetId":"AST-A1","action":"Assigned","timestamp":"2026-01-01T00:00:00Z"}')`, [f.A]);
+  await asSite(q, f);
+  await rejects(q(`select assetflow_delete_company_records($1,'history',$2)`, [f.A, ['H1']]), /audit trail/i);
+  await as(q, f.userA, f.emailA); // company-wide manager
+  await rejects(q(`select assetflow_delete_company_records($1,'audit-logs',$2)`, [f.A, ['x']]), /audit trail/i);
+});
+
+test('a company-wide manager still works across all plants', async (q, f) => {
+  await as(q, f.userA, f.emailA);
+  await q(`select assetflow_upsert_company_records($1,'assets',$2::jsonb)`, [f.A, assetJson('AST-A2', 'SITE-A2', { name: 'by company manager' })]);
+  await q(`select assetflow_upsert_company_records($1,'asset-categories',$2::jsonb)`, [f.A, JSON.stringify([{ id: 'ok', name: 'OK', active: true }])]);
 });
 
 // ----------------------------------------------------------------- runner
