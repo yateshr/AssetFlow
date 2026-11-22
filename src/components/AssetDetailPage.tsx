@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { currentHolder, type Holder } from '@/lib/holders';
 import { Archive, ArrowLeft, CalendarClock, Edit, History as HistoryIcon, Package, Printer, ShieldCheck, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,7 @@ export function AssetDetailPage({ asset, users, sites, invoices, history, onBack
   const [calls] = useCollection<ItCallLog>('call-logs');
   const [vendors] = useCollection<Vendor>('vendors');
   const [policies] = useCollection<SystemPolicy>('system-policies');
+  const [holders] = useCollection<Holder>('holders');
   const policy = policies[0] || DEFAULT_SYSTEM_POLICY;
 
   const site = sites.find(s => s.id === asset.siteId);
@@ -126,7 +128,7 @@ export function AssetDetailPage({ asset, users, sites, invoices, history, onBack
         <aside className="space-y-5">
           <IdentityCard asset={asset} site={site} ageYears={dep.ageYears} onLabel={onLabel} />
           <WarrantyCard asset={asset} days={warrantyDays} />
-          <CustodyCard asset={asset} holder={holder} assignment={myAssignments.find(a => a.status === 'active')} />
+          <CustodyCard asset={asset} holder={holder} stockHolder={currentHolder(asset, holders)} userName={userName} assignment={myAssignments.find(a => a.status === 'active')} />
           <DepreciationCard dep={dep} />
           <Card>
             <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><CalendarClock className="h-4 w-4" /> Upcoming maintenance</CardTitle></CardHeader>
@@ -211,17 +213,23 @@ function WarrantyCard({ asset, days }: { asset: Asset; days: number }) {
   );
 }
 
-function CustodyCard({ asset, holder, assignment }: { asset: Asset; holder?: User; assignment?: Assignment }) {
+function CustodyCard({ asset, holder, stockHolder, userName, assignment }: { asset: Asset; holder?: User; stockHolder?: Holder; userName: (id?: string) => string; assignment?: Assignment }) {
   return (
     <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base">Current user</CardTitle></CardHeader>
+      <CardHeader className="pb-2"><CardTitle className="text-base">Held by</CardTitle></CardHeader>
       <CardContent className="text-sm">
         {holder ? (
           <>
             <p className="font-medium">{holder.name}</p>
             <p className="text-muted-foreground">{holder.department}{assignment?.assignedDate ? ` · since ${dmy(assignment.assignedDate)}` : ''}</p>
           </>
-        ) : <p className="text-muted-foreground">{asset.status === 'assigned' ? 'Assigned (user not found)' : 'Not assigned. In stock.'}</p>}
+        ) : stockHolder ? (
+          <>
+            <p className="font-medium">{stockHolder.name}</p>
+            <p className="text-muted-foreground">Not assigned to an employee · {stockHolder.kind === 'stock' ? 'in stock' : stockHolder.kind === 'shared' ? 'shared device' : 'vacant desk'}</p>
+            {stockHolder.responsibleUserId && <p className="text-xs text-muted-foreground">Responsible: {userName(stockHolder.responsibleUserId)}</p>}
+          </>
+        ) : <p className="text-muted-foreground">{asset.status === 'assigned' ? 'Assigned (user not found)' : 'Not assigned. No holder is set for this site yet.'}</p>}
       </CardContent>
     </Card>
   );

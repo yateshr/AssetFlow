@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { defaultHolder, type Holder } from '@/lib/holders';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, ArrowRightLeft, CheckCircle, XCircle, Clock, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ export function AssignmentsPage({
   const [statusFilter, setStatusFilter] = useState<AssignmentStatus | 'all'>('all');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState<Assignment | null>(null);
+  const [holders] = useCollection<Holder>('holders');
 
   const filteredAssignments = assignmentsList.filter(assignment => {
     const matchesSearch = searchQuery === '' || 
@@ -105,7 +107,7 @@ export function AssignmentsPage({
 
     onAssetsChange(assetsList.map(asset =>
       asset.id === assignment.assetId
-        ? { ...asset, status: nextStatus, assignedTo: undefined }
+        ? { ...asset, status: nextStatus, assignedTo: undefined, heldBy: defaultHolder(holders, asset.siteId)?.id }
         : asset
     ));
 
@@ -118,7 +120,7 @@ export function AssignmentsPage({
         action: condition === 'damaged' ? 'Under Repair' : condition === 'missing' ? 'Lost' : 'Returned',
         performedBy: currentUser.id,
         from: assignment.userName,
-        to: custodianName(),
+        to: (() => { const site = assetsList.find(a => a.id === assignment.assetId)?.siteId; return (site ? defaultHolder(holders, site)?.name : undefined) ?? custodianName(); })(),
         userId: assignment.userId,
         reason: 'Asset checked in',
         notes: [
@@ -312,7 +314,7 @@ export function AssignmentsPage({
               onAssignmentsChange([...assignmentsList, newAssignment]);
               onAssetsChange(assetsList.map(asset =>
                 asset.id === data.assetId
-                  ? { ...asset, status: 'assigned', assignedTo: data.userId }
+                  ? { ...asset, status: 'assigned', assignedTo: data.userId, heldBy: undefined }
                   : asset
               ));
               onHistoryChange([

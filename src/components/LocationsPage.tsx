@@ -1,4 +1,6 @@
 import { getCollection } from '@/lib/db';
+import { HolderEditor } from './HolderEditor';
+import { stockHolderName, type Holder } from '@/lib/holders';
 import { masterLabel } from '@/lib/masterLabel';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
@@ -34,6 +36,7 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
   const [typeFilter, setTypeFilter] = useState<'all' | 'office' | 'warehouse' | 'remote'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [holders, setHolders] = useCollection<Holder>('holders');
   const [spacesLocation,setSpacesLocation]=useState<Location|null>(null);
 
   const filteredLocations = sitesList.filter(location => {
@@ -196,10 +199,11 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
               {editingLocation ? 'Update site information below.' : 'Fill in the details to add a new site.'}
             </DialogDescription>
           </DialogHeader>
+          {editingLocation && <HolderEditor siteId={editingLocation.id} siteName={editingLocation.name} assets={getCollection<Asset>('assets')} />}
           <LocationForm 
             location={editingLocation}
             locationTypes={locationTypes}
-            onSubmit={(data) => {
+            onSubmit={(data, options) => {
               if (editingLocation) {
                 onSitesChange(sitesList.map(l => l.id === editingLocation.id ? { ...l, ...data } : l));
               } else {
@@ -208,6 +212,9 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
                   ...data
                 };
                 onSitesChange([...sitesList, newLocation]);
+                if (options.createStockHolder) {
+                  setHolders([...holders, { id: `HLD-${crypto.randomUUID().slice(0, 8)}`, siteId: newLocation.id, kind: 'stock', name: stockHolderName(data.name), active: true }]);
+                }
               }
               setShowCreateModal(false);
               setEditingLocation(null);
@@ -234,9 +241,10 @@ function SiteAreasDialog({location,areas,onChange,onClose}:{location:Location|nu
 function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
   location: Location | null; 
   locationTypes: MasterDataOption[];
-  onSubmit: (data: Omit<Location, 'id'>) => void;
+  onSubmit: (data: Omit<Location, 'id'>, options: { createStockHolder: boolean }) => void;
   onCancel: () => void;
 }) {
+  const [createStockHolder, setCreateStockHolder] = useState(true);
   const [formData, setFormData] = useState<Omit<Location, 'id'>>({
     name: location?.name || '',
     address: location?.address || '',
@@ -258,7 +266,7 @@ function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    onSubmit(formData, { createStockHolder });
   };
 
   return (
@@ -317,6 +325,12 @@ function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
           onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
         />
       </div>
+      {!location && (
+        <label className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
+          <input type="checkbox" className="mt-1" checked={createStockHolder} onChange={e => setCreateStockHolder(e.target.checked)} />
+          <span><b>Create the stock holder “{stockHolderName(formData.name || 'this site')}”</b><br /><span className="text-xs text-muted-foreground">It holds new and spare assets for this site. You can add more holders (shared devices, vacant desks) after creating the site.</span></span>
+        </label>
+      )}
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="submit">{location ? 'Update' : 'Create'} Site</Button>

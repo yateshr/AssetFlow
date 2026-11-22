@@ -6,6 +6,7 @@ import type {
   Assignment,
   AssetStatus,
 } from '@/data/models';
+import { defaultHolder, type Holder } from '@/lib/holders';
 import { getCollection } from '@/lib/db';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 
@@ -60,21 +61,26 @@ export function returnAssetsForDepartedUser(
       : assignment
   );
 
+  const holders = getCollection<Holder>('holders');
   const nextAssets = assets.map((asset) =>
     returnedAssetIds.has(asset.id)
-      ? { ...asset, status: 'available' as const, assignedTo: undefined }
+      ? { ...asset, status: 'available' as const, assignedTo: undefined, heldBy: defaultHolder(holders, asset.siteId)?.id }
       : asset
   );
 
   const user = assignments.find((a) => a.userId === userId)?.userName ?? 'Employee';
+  const holderFor = (assetId: string) => {
+    const site = assets.find(a => a.id === assetId)?.siteId;
+    return (site ? defaultHolder(holders, site)?.name : undefined) ?? custodianName();
+  };
   const events = [...returnedAssetIds].map((assetId) =>
     makeHistoryEvent(assetId, 'Returned', {
       performedBy: actorName,
       from: user,
-      to: custodianName(),
+      to: holderFor(assetId),
       userId,
       reason: 'Employee left company',
-      notes: `Automatically returned to ${custodianName()} after employee departure.`,
+      notes: `Automatically returned to ${holderFor(assetId)} after employee departure.`,
     })
   );
 

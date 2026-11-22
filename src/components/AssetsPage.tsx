@@ -1,4 +1,5 @@
 import { createTaggedAssets, getActiveCompanyId, kv, loadAssetTagSiteSeries, requestTransfer, reverseInvoiceReceipt, transferAsset, type AssetTagSiteSeries } from '@/lib/db';
+import { currentHolder, defaultHolder, type Holder } from '@/lib/holders';
 import { AssetRequestDialog } from './AssetRequestDialog';
 import { AssetRequestsPanel } from './AssetRequestsPanel';
 import { AssetDetailPage } from './AssetDetailPage';
@@ -111,6 +112,8 @@ export function AssetsPage({
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all');
   const [warrantyFilter, setWarrantyFilter] = useState<'all' | 'expired' | '30' | '60' | '90'>('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [holderFilter, setHolderFilter] = useState('all');
+  const [holders] = useCollection<Holder>('holders');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -149,7 +152,7 @@ export function AssetsPage({
   // Filter assets
   const filteredAssets = assets.filter(asset => {
     const q = searchQuery.toLowerCase();
-    const assignedName = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo)?.name || '' : '';
+    const assignedName = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo)?.name || '' : currentHolder(asset, holders)?.name || '';
     const searchTerms = q.split(/\s+/).filter(Boolean);
     const searchHaystack = [asset.name, asset.assetTag, asset.serialNumber, asset.manufacturer, asset.model, asset.siteId, assignedName, asset.status, asset.type]
       .join(' ').toLowerCase();
@@ -157,6 +160,7 @@ export function AssetsPage({
     const matchesStatus = statusFilter === 'all' || asset.status === statusFilter;
     const matchesType = typeFilter === 'all' || asset.type === typeFilter;
     const matchesLocation = locationFilter === 'all' || asset.siteId === locationFilter;
+    const matchesHolder = holderFilter === 'all' || (holderFilter === 'employees' ? !!asset.assignedTo : !asset.assignedTo && currentHolder(asset, holders)?.id === holderFilter);
     const assignedUser = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo) : undefined;
     const matchesDepartment = departmentFilter === 'all' || assignedUser?.department === departmentFilter;
     const matchesMinPrice = minPrice === '' || asset.purchasePrice >= Number(minPrice);
@@ -167,7 +171,7 @@ export function AssetsPage({
       (warrantyFilter === '30' && d !== null && d >= 0 && d <= 30) ||
       (warrantyFilter === '60' && d !== null && d >= 0 && d <= 60) ||
       (warrantyFilter === '90' && d !== null && d >= 0 && d <= 90);
-    return matchesSearch && matchesStatus && matchesType && matchesWarranty && matchesLocation && matchesDepartment && matchesMinPrice && matchesMaxPrice;
+    return matchesSearch && matchesStatus && matchesType && matchesWarranty && matchesLocation && matchesHolder && matchesDepartment && matchesMinPrice && matchesMaxPrice;
   });
 
   useEffect(() => {
@@ -279,6 +283,7 @@ export function AssetsPage({
     setWarrantyFilter('all');
     setLocationFilter('all');
     setDepartmentFilter('all');
+    setHolderFilter('all');
     setMinPrice('');
     setMaxPrice('');
   };
@@ -286,7 +291,7 @@ export function AssetsPage({
   const activeFilterCount = [
     searchQuery.trim(), statusFilter !== 'all' ? statusFilter : '', typeFilter !== 'all' ? typeFilter : '',
     warrantyFilter !== 'all' ? warrantyFilter : '', locationFilter !== 'all' ? locationFilter : '',
-    departmentFilter !== 'all' ? departmentFilter : '', minPrice, maxPrice
+    departmentFilter !== 'all' ? departmentFilter : '', holderFilter !== 'all' ? holderFilter : '', minPrice, maxPrice
   ].filter(Boolean).length;
 
   const buildExport = () => ({
@@ -441,6 +446,16 @@ export function AssetsPage({
               <option value="all">All Departments</option>
               {departments.map(department => <option key={department} value={department}>{department}</option>)}
             </select>
+            <select
+              value={holderFilter}
+              onChange={(e) => setHolderFilter(e.target.value)}
+              aria-label="Held by"
+              className="px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <option value="all">Held by: anyone</option>
+              <option value="employees">Employees</option>
+              {holders.filter(h => h.active !== false && (locationFilter === 'all' || h.siteId === locationFilter)).map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
             <Input type="number" min="0" placeholder="Min price" value={minPrice} onChange={e => setMinPrice(e.target.value)} />
             <Input type="number" min="0" placeholder="Max price" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} />
             <div className="flex items-center justify-between gap-2 sm:col-span-2 lg:col-span-4">
@@ -488,7 +503,7 @@ export function AssetsPage({
                   {days !== null && <Badge variant={days < 0 ? 'destructive' : 'outline'}>{days < 0 ? 'Warranty expired' : `${days}d warranty`}</Badge>}
                 </div>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <div><dt className="text-xs text-muted-foreground">Assigned to</dt><dd className="mt-0.5 truncate">{assignedUser?.name || 'Unassigned'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Assigned to</dt><dd className="mt-0.5 truncate">{assignedUser?.name || currentHolder(asset, holders)?.name || 'Unassigned'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Site</dt><dd className="mt-0.5 truncate">{location?.name || 'Not set'}</dd></div>
                 </dl>
               </CardContent>
@@ -560,7 +575,7 @@ export function AssetsPage({
                         {location?.name || '-'}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {assignedUser?.name || '-'}
+                        {assignedUser?.name || (() => { const h = currentHolder(asset, holders); return h ? <span className="italic" title="Held in stock, not assigned to an employee">{h.name}</span> : '-'; })()}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -691,6 +706,7 @@ export function AssetsPage({
               const normalizedData: Omit<Asset, 'id'> = {
                 ...data,
                 assignedTo: data.assignedTo || undefined,
+                heldBy: data.assignedTo ? undefined : (editingAsset?.heldBy || defaultHolder(holders, data.siteId)?.id),
                 status: data.assignedTo ? 'assigned' : data.status
               };
 

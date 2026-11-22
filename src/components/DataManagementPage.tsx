@@ -117,7 +117,7 @@ export function DataManagementPage({ isAdmin, onLoadDemoData, onEraseAllData }: 
                   ['Physical assets', preview.assets.length], ['Users', preview.users.length], ['Assignments', preview.assignments.length],
                   ['History events', preview.history.length], ['Accounts/licenses', preview.licenses.length], ['Call logs', preview.callLogs.length],
                   ['Locations', preview.locations.length], ['Departments', preview.departments.length], ['Vendors', preview.vendors.length],
-                  ['Invoices', preview.invoices.length], ['Spare items', preview.stock.length],
+                  ['Invoices', preview.invoices.length], ['Spare items', preview.stock.length], ['Holders', preview.holders.length],
                 ].map(([label, value]) => <div key={String(label)} className="rounded-lg border bg-background p-3"><p className="text-2xl font-bold tabular-nums">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>)}
               </div>
               {preview.warnings.length > 0 && <div className="space-y-2">

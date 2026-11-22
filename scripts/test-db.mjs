@@ -317,6 +317,48 @@ test('a site admin sees only their own site\'s requests; the Super Admin sees al
   assert(all.rows.length === 2, 'the Super Admin should see both requests');
 });
 
+// ----------------------------------------------------------------- asset holders
+const holder = (id, site, kind = 'stock', active = true) => JSON.stringify({ id, siteId: site, kind, name: 'Holder ' + id, active });
+async function addHolders(q, f) {
+  await asSuper(q);
+  await q(`insert into master_data(company_id,collection,id,data) values($1,'holders','H-A1',$2::jsonb),($1,'holders','H-A1-OLD',$3::jsonb),($1,'holders','H-A2',$4::jsonb)`,
+    [f.A, holder('H-A1', 'SITE-A1'), holder('H-A1-OLD', 'SITE-A1', 'stock', false), holder('H-A2', 'SITE-A2')]);
+}
+
+test("a new asset starts with its site's active stock holder", async (q, f) => {
+  await requestSetup(q, f);
+  await addHolders(q, f);
+  await asSite(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  await asAdmin(q, f);
+  const made = await q(`select assetflow_decide_asset_creation($1,true,'') as r`, [rows[0].id]);
+  assert(made.rows[0].r.every(a => a.heldBy === 'H-A1' && !a.assignedTo), `expected heldBy H-A1, got ${JSON.stringify(made.rows[0].r.map(a => a.heldBy))}`);
+});
+
+test('assets of another site use that site\'s holder', async (q, f) => {
+  await requestSetup(q, f);
+  await addHolders(q, f);
+  await asAdmin(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A2', { items: [{ name: 'M', serialNumber: 'H2-1' }] })]);
+  const made = await q(`select assetflow_decide_asset_creation($1,true,'') as r`, [rows[0].id]);
+  assert(made.rows[0].r[0].heldBy === 'H-A2', 'the asset should be held by the stock holder of SITE-A2');
+});
+
+test('a site without a stock holder still creates assets (no holder yet)', async (q, f) => {
+  await requestSetup(q, f);
+  await asAdmin(q, f);
+  const { rows } = await q(`select assetflow_request_asset_creation($1,$2::jsonb) as id`, [f.A, request('SITE-A1')]);
+  const made = await q(`select assetflow_decide_asset_creation($1,true,'') as r`, [rows[0].id]);
+  assert(made.rows[0].r.length === 2 && made.rows[0].r.every(a => a.heldBy == null), 'assets are created without a holder');
+});
+
+test('only company-wide users can manage holders', async (q, f) => {
+  await asSite(q, f);
+  await rejects(q(`select assetflow_upsert_company_records($1,'holders',$2::jsonb)`, [f.A, JSON.stringify([JSON.parse(holder('H-NEW', 'SITE-A1'))])]), /not allowed/i);
+  await as(q, f.userA, f.emailA); // company-wide manager
+  await q(`select assetflow_upsert_company_records($1,'holders',$2::jsonb)`, [f.A, JSON.stringify([JSON.parse(holder('H-NEW', 'SITE-A1'))])]);
+});
+
 // ----------------------------------------------------------------- runner
 let failed = 0;
 for (const { name, fn } of tests) {

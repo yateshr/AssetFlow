@@ -126,6 +126,8 @@ export interface Asset {
   /** Set when the asset is archived. Archived assets stay in the assets table (so reports, tag and serial checks still see them) but are hidden from the active list. */
   archivedAt?: string;
   archivedBy?: string;
+  /** Holder (see lib/holders) while the asset is not assigned to an employee. */
+  heldBy?: string;
 }
 
 export interface User {

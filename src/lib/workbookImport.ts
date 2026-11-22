@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import type { Holder, HolderKind } from '@/lib/holders';
 import { DEFAULT_ASSET_CATEGORIES } from '@/data/assetCategories';
 import type { Asset, AssetCategory, AssetHistoryEvent, AssetType, Assignment, Invoice, ItCallLog, Location, SoftwareLicense, User, Vendor } from '@/data/models';
 import { getCollection, kv, pendingWrites, replaceCollection } from '@/lib/db';
@@ -17,11 +18,13 @@ export type WorkbookImport = {
   vendors: Vendor[];
   invoices: Invoice[];
   callLogs: ItCallLog[];
+  /** Places and stock accounts that hold assets without an employee (for example "IT Assets Manager Nahuli"). */
+  holders: Holder[];
   stock: Array<{ id: string; name: string; sku: string; category: string; quantity: number; minQuantity: number; unitCost: number; location: string }>;
   warnings: ImportWarning[];
 };
 
-const emptyImport = (): WorkbookImport => ({ files: [], users: [], locations: [], departments: [], assets: [], assignments: [], history: [], licenses: [], vendors: [], invoices: [], callLogs: [], stock: [], warnings: [] });
+const emptyImport = (): WorkbookImport => ({ files: [], users: [], locations: [], departments: [], assets: [], assignments: [], history: [], licenses: [], vendors: [], invoices: [], callLogs: [], holders: [], stock: [], warnings: [] });
 const text = (value: unknown) => value == null ? '' : String(value).trim();
 const upper = (value: unknown) => text(value).toUpperCase();
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || crypto.randomUUID();
@@ -34,7 +37,11 @@ const isoDate = (value: unknown) => {
 };
 const rows = (workbook: XLSX.WorkBook, name: string): unknown[][] => {
   const sheet = workbook.Sheets[name];
-  return sheet ? XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: true }) : [];
+  if (!sheet) return [];
+  // Column A is always index 0, even when the sheet's used range starts at column B (the Employee sheet does).
+  const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : undefined;
+  if (range) { range.s.c = 0; range.s.r = 0; }
+  return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: true, range });
 };
 const uniqueBy = <T>(items: T[], key: (item: T) => string) => Array.from(new Map(items.filter(Boolean).map(item => [key(item), item])).values());
 
@@ -90,6 +97,16 @@ export async function parseAssetWorkbooks(files: File[]): Promise<WorkbookImport
   result.invoices = uniqueBy(result.invoices, item => item.id);
   result.callLogs = uniqueBy(result.callLogs, item => item.id);
   result.stock = uniqueBy(result.stock, item => item.id);
+  result.holders = uniqueBy(result.holders, item => item.id);
+  // Every site that has unassigned assets needs a stock holder to keep them.
+  for (const site of uniqueBy(result.locations, l => l.id)) {
+    if (!result.holders.some(h => h.siteId === site.id && h.kind === 'stock')) {
+      result.holders.push({ id: `HLD-STOCK-${slug(site.id)}`, siteId: site.id, kind: 'stock', name: `IT Assets Manager – ${site.name.trim()}`, active: true });
+    }
+  }
+  for (const asset of result.assets) {
+    if (!asset.assignedTo && !asset.heldBy) asset.heldBy = result.holders.find(h => h.siteId === asset.siteId && h.kind === 'stock')?.id;
+  }
   const missing = missingAssetCategories(result);
   if (missing.length) {
     result.warnings.push({ code: 'missing-types', message: `These asset types are not set up in this company yet and will be created on import: ${missing.map(category => `${category.name} (${category.code})`).join(', ')}. You can rename them later in Settings → Asset setup.`, count: missing.length });
@@ -103,6 +120,16 @@ export async function applyWorkbookImport(data: WorkbookImport) {
   await replaceCollection('users', merge(getCollection<User>('users'), data.users, item => item.id));
   await replaceCollection('locations', merge(getCollection<Location>('locations'), data.locations, item => item.id));
   await replaceCollection('departments', merge(getCollection<{ id: string; name: string }>('departments'), data.departments, item => item.id));
+  // Holders: keep a site's existing stock holder instead of adding a second one.
+  const existingHolders = getCollection<Holder>('holders');
+  const remap = new Map<string, string>();
+  const newHolders = data.holders.filter(h => {
+    const current = h.kind === 'stock' ? existingHolders.find(x => x.siteId === h.siteId && x.kind === 'stock' && x.active !== false) : undefined;
+    if (current && current.id !== h.id) { remap.set(h.id, current.id); return false; }
+    return true;
+  });
+  if (newHolders.length) await replaceCollection('holders', merge(existingHolders, newHolders, item => item.id));
+  if (remap.size) data.assets.forEach(a => { if (a.heldBy && remap.has(a.heldBy)) a.heldBy = remap.get(a.heldBy); });
   const missingTypes = missingAssetCategories(data);
   if (missingTypes.length) await replaceCollection('asset-categories', [...getCollection<AssetCategory>('asset-categories'), ...missingTypes]);
   await replaceCollection('assets', merge(getCollection<Asset>('assets'), data.assets, item => item.assetTag.toUpperCase()));
@@ -118,14 +145,37 @@ export async function applyWorkbookImport(data: WorkbookImport) {
   await pendingWrites();
 }
 
+/**
+ * Register rows that are not people: the site's asset manager account, shared devices and places,
+ * and desks left vacant. They become holders instead of employees.
+ */
+export function holderKindFor(code: string, name: string, department: string): HolderKind | null {
+  const all = `${code} ${name} ${department}`;
+  if (/ASSETS?\s+MANAGER|IT\s*SPARE|STAND\s*-?\s*BY|^IT\s*HO$/i.test(`${name}`) || /^IT\s*(SPARE|HO)$/i.test(code)) return 'stock';
+  if (/^IT-CAM/i.test(code) || /CAMERA|MACHINE PC|^SECURITY/i.test(name) || /^IT\d+$/i.test(code)) return 'shared';
+  if (/^EX-?EMPLOYEE/i.test(code) || /^VACANT/i.test(department) || /UNASSIGNED/i.test(name) || /INACTIVE USER/i.test(all)) return 'vacant';
+  return null;
+}
+
 function parseAssetRegister(workbook: XLSX.WorkBook, out: WorkbookImport) {
   const employeeRows = rows(workbook, 'Employee').slice(1).filter(row => text(row[2]));
   const employeeByCode = new Map<string, User>();
+  const holderByCode = new Map<string, string>();
   for (const row of employeeRows) {
     const code = text(row[2]);
     const name = text(row[3]);
     const location = normalizeLocation(row[4]);
     const department = normalizeDepartment(row[5]);
+    const kind = name ? holderKindFor(code, name, department) : null;
+    if (kind) {
+      const siteKey = location ? `LOC-${slug(location)}` : '';
+      if (siteKey) {
+        out.holders.push({ id: `HLD-${slug(code)}`, siteId: siteKey, kind, name: kind === 'vacant' && /UNASSIGNED/i.test(name) ? `Vacant desk (${department.replace(/^VACANT-/, '') || code})` : name, active: true });
+        out.locations.push({ id: siteKey, name: location, address: '', type: 'office', capacity: 0, manager: '' });
+        holderByCode.set(code, `HLD-${slug(code)}`);
+      }
+      continue;
+    }
     if (!name || isPlaceholderEmployee(code) || isPlaceholderEmployee(name)) continue;
     const user: User = { id: `EMP-${code}`, name, email: `${slug(code)}@import.local`, department, siteId: location ? `LOC-${slug(location)}` : '', role: 'user', phone: '', joinDate: new Date().toISOString().slice(0, 10), status: /LEFT|INACTIVE/i.test(`${name} ${department}`) ? 'left' : 'active' };
     employeeByCode.set(code, user); out.users.push(user);
@@ -159,7 +209,7 @@ function parseAssetRegister(workbook: XLSX.WorkBook, out: WorkbookImport) {
     const type = typeMap[sourceType] ?? 'accessory';
     if (!typeMap[sourceType]) unknownTypes++;
     const siteId = assignee?.siteId || '';
-    out.assets.push({ id: `AST-${slug(tag)}`, name: description || `${sourceType} ${tag}`, type, manufacturer: '', model: description, serialNumber: '', assetTag: tag, status: assignee ? 'assigned' : 'available', purchaseDate: '', purchasePrice: 0, warrantyExpiry: '', siteId, assignedTo: assignee?.id, notes: `Imported type: ${sourceType}` });
+    out.assets.push({ id: `AST-${slug(tag)}`, name: description || `${sourceType} ${tag}`, type, manufacturer: '', model: description, serialNumber: '', assetTag: tag, status: assignee ? 'assigned' : 'available', heldBy: assignee ? undefined : holderByCode.get(code), purchaseDate: '', purchasePrice: 0, warrantyExpiry: '', siteId, assignedTo: assignee?.id, notes: `Imported type: ${sourceType}` });
     historyRows.forEach((allocation, index) => {
       const employeeCode = text(allocation[2]); const user = employeeByCode.get(employeeCode);
       const assignedDate = isoDate(allocation[8] || allocation[6]) || new Date().toISOString().slice(0, 10);
