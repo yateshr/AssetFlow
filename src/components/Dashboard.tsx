@@ -10,6 +10,7 @@ import {
   Headphones,
   BarChart3
 } from 'lucide-react';
+import { SetupGuide } from './SetupGuide';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -180,20 +181,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
       </div>
 
       {/* First-run guidance */}
-      {totalAssets === 0 && (
-        <Card className="af-scale-in border-dashed">
-          <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <p className="font-semibold">Your workspace is empty. Let's get started.</p>
-              <p className="text-sm text-muted-foreground mt-1">Add your locations and departments in Settings, then register your first asset.</p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onNavigate('settings')}>Open settings</Button>
-              <Button onClick={() => onNavigate('assets')}>Add first asset</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <SetupGuide onNavigate={onNavigate} assetCount={totalAssets} users={users} />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

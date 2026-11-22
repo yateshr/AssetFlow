@@ -126,7 +126,14 @@ const LOCALES: Array<[string, string]> = [
 /* ───────────────────────── page ───────────────────────── */
 
 export function SettingsPage({ onOpenOrganization }: { onOpenOrganization?: () => void }) {
-  const [active, setActive] = useState('regional');
+  // Other screens (the setup guide) can open a specific section.
+  const [active, setActive] = useState(() => {
+    try {
+      const wanted = sessionStorage.getItem('assetflow-settings-section');
+      if (wanted) { sessionStorage.removeItem('assetflow-settings-section'); if (SECTIONS.some(s => s.id === wanted)) return wanted; }
+    } catch { /* ignore */ }
+    return 'regional';
+  });
   const section = SECTIONS.find(s => s.id === active)!;
   const [policies, setPolicies] = useCollection<SystemPolicy>('system-policies');
   const policy = policies.find(item => item.id === 'system') || DEFAULT_SYSTEM_POLICY;
