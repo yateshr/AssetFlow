@@ -5,8 +5,10 @@
  */
 import type { Asset, Invoice, SoftwareLicense, Vendor } from '@/data/models';
 import type { SystemPolicy } from '@/data/masterData';
+import type { Holder } from './holders';
+import { minimumId, stockLines, type StockMinimum } from './stock';
 
-export type ExpiryKind = 'warranty' | 'amc' | 'insurance' | 'license' | 'seats' | 'contract' | 'invoice';
+export type ExpiryKind = 'warranty' | 'amc' | 'insurance' | 'license' | 'seats' | 'contract' | 'invoice' | 'stock';
 export type Severity = 'critical' | 'warning' | 'info';
 export type ExpiryTarget = 'assets' | 'licenses' | 'vendors' | 'invoices';
 
@@ -32,7 +34,11 @@ export const KIND_LABEL: Record<ExpiryKind, string> = {
   seats: 'License seats',
   contract: 'Vendor contract',
   invoice: 'Invoice payment',
+  stock: 'Low stock',
 };
+
+/** Alerts that have no due date (capacity or stock level): they need action now rather than by a day. */
+export const isUndated = (alert: Pick<ExpiryAlert, 'date'>) => !alert.date;
 
 const DAY = 86_400_000;
 const INACTIVE_ASSET = new Set(['retired', 'disposed', 'lost']);
@@ -66,11 +72,29 @@ export interface AlertInput {
   vendors: Vendor[];
   invoices: Invoice[];
   policy: Pick<SystemPolicy, 'warrantyAlertDays' | 'licenseAlertDays'>;
+  /** Optional: site holders and minimum levels, to warn when a site is running low on an asset type. */
+  stock?: { holders: Holder[]; minimums: StockMinimum[]; siteName: (id: string) => string; typeName: (id: string) => string };
   now?: Date;
 }
 
-export function buildExpiryAlerts({ assets, licenses, vendors, invoices, policy, now = new Date() }: AlertInput): ExpiryAlert[] {
+export function buildExpiryAlerts({ assets, licenses, vendors, invoices, policy, stock, now = new Date() }: AlertInput): ExpiryAlert[] {
   const out: ExpiryAlert[] = [];
+
+  if (stock) {
+    for (const line of stockLines(assets, stock.holders, stock.minimums).filter(l => l.low)) {
+      out.push({
+        id: `stock-${minimumId(line.siteId, line.type)}`,
+        kind: 'stock',
+        title: line.count === 0 ? 'Out of stock' : 'Low stock',
+        subject: `${stock.typeName(line.type)} • ${stock.siteName(line.siteId)}`,
+        detail: `${line.count} in stock, minimum ${line.min}`,
+        date: '',
+        days: 0,
+        severity: line.count === 0 ? 'critical' : 'warning',
+        target: 'assets',
+      });
+    }
+  }
 
   const assetAlert = (asset: Asset, kind: 'warranty' | 'amc' | 'insurance', date: string | undefined, extra: string) => {
     const days = daysUntil(date, now);

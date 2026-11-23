@@ -359,6 +359,13 @@ test('only company-wide users can manage holders', async (q, f) => {
   await q(`select assetflow_upsert_company_records($1,'holders',$2::jsonb)`, [f.A, JSON.stringify([JSON.parse(holder('H-NEW', 'SITE-A1'))])]);
 });
 
+test('a site IT admin can set minimum stock for their own site only', async (q, f) => {
+  await asSite(q, f);
+  const min = site => JSON.stringify([{ id: `${site}::mouse`, siteId: site, type: 'mouse', min: 3 }]);
+  await q(`select assetflow_upsert_company_records($1,'stock-minimums',$2::jsonb)`, [f.A, min('SITE-A1')]);
+  await rejects(q(`select assetflow_upsert_company_records($1,'stock-minimums',$2::jsonb)`, [f.A, min('SITE-A2')]), /another site|not allowed/i);
+});
+
 // ----------------------------------------------------------------- employee ids
 test('an employee ID can belong to only one employee in a company', async (q, f) => {
   await as(q, f.admin, f.emailAdmin);

@@ -8,6 +8,8 @@ import { masterLabel } from '@/lib/masterLabel';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
 import { ExportMenu } from '@/components/ExportMenu';
+import { StockPanel } from '@/components/StockPanel';
+import { ChangeHolderDialog } from '@/components/ChangeHolderDialog';
 import { useCollection } from '@/lib/db';
 const LabelPrintDialog = lazy(() => import('./LabelPrintDialog').then(m => ({ default: m.LabelPrintDialog })));
 import type { MasterDataOption } from '@/data/masterData';
@@ -129,6 +131,7 @@ export function AssetsPage({
   const [historyAsset, setHistoryAsset] = useState<Asset | null>(null);
   const [transferringAsset,setTransferringAsset]=useState<Asset|null>(null);
   const [movingAsset,setMovingAsset]=useState<Asset|null>(null);
+  const [holderAsset,setHolderAsset]=useState<Asset|null>(null);
   const [reversingReceipt,setReversingReceipt]=useState<Asset|null>(null);
   const [assetTagRules,setAssetTagRules]=useState<AssetTagSiteSeries[]>([]);
   const isSuperAdmin=['super_admin','admin'].includes(currentUser.role);
@@ -333,6 +336,7 @@ export function AssetsPage({
               onHistory={() => setHistoryAsset(liveViewing)}
               onEdit={() => setEditingAsset(liveViewing)}
               onMove={() => setMovingAsset(liveViewing)}
+              onChangeHolder={liveViewing.assignedTo ? undefined : () => setHolderAsset(liveViewing)}
               onTransfer={() => setTransferringAsset(liveViewing)}
               onLabel={() => setLabelAssets([liveViewing])}
               onArchive={() => { void handleDelete(liveViewing.id).then(done => { if (done) setViewingAsset(null); }); }}
@@ -392,6 +396,15 @@ export function AssetsPage({
           <p className="mt-1 text-xl font-semibold">{warrantyCounts.next90}</p>
         </button>
       </div>
+
+      <StockPanel
+        assets={assets} onAssetsChange={onAssetsChange} history={history} onHistoryChange={onHistoryChange}
+        users={usersList} sites={sitesList} categories={assetCategories} currentUser={currentUser}
+        onShow={(siteId, type, holderId) => {
+          setStatusFilter('available'); setTypeFilter(type); setLocationFilter(siteId); setHolderFilter(holderId || 'all'); setSearchQuery('');
+          setTimeout(() => document.getElementById('asset-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+        }}
+      />
 
       {/* Filters */}
       <Card className="sticky top-0 z-20 shadow-sm">
@@ -503,7 +516,7 @@ export function AssetsPage({
                     <p className="truncate font-semibold">{asset.name}</p>
                     <p className="mt-0.5 font-mono text-xs text-muted-foreground">{asset.assetTag} · {asset.manufacturer} {asset.model}</p>
                   </button>
-                  <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
+                  <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onChangeHolder={asset.assignedTo?undefined:()=>setHolderAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge variant="outline" className={getStatusBadge(asset.status)}>{asset.status === 'maintenance' ? 'Under Repair' : asset.status}</Badge>
@@ -520,7 +533,7 @@ export function AssetsPage({
       </div>
 
       {/* Desktop assets table */}
-      <Card className="hidden md:block">
+      <Card id="asset-table" className="hidden scroll-mt-40 md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -587,7 +600,7 @@ export function AssetsPage({
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => setViewingAsset(asset)}><Eye className="mr-1.5 h-4 w-4" />View</Button>
-                          <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
+                          <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onChangeHolder={asset.assignedTo?undefined:()=>setHolderAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -645,7 +658,8 @@ export function AssetsPage({
       </Dialog>
 
       <AssetTransferDialog asset={transferringAsset} companies={companies.filter(c=>c.active&&c.id!==getActiveCompanyId())} onClose={()=>setTransferringAsset(null)} onTransfer={async(targetCompanyId,newAssetTag,reason)=>{if(!transferringAsset)return;try{await transferAsset({sourceCompanyId:getActiveCompanyId()!,targetCompanyId,assetId:transferringAsset.id,newAssetTag,reason});window.location.reload();}catch(error){if(!(error instanceof Error)||!error.message.includes('Only the Super Admin'))throw error;await requestTransfer({requestType:'asset',sourceCompanyId:getActiveCompanyId()!,sourceSiteId:transferringAsset.siteId,targetCompanyId,entityId:transferringAsset.id,newAssetTag,reason});}}} />
-      <MoveAssetDialog asset={movingAsset} locations={sitesList} onClose={()=>setMovingAsset(null)} onMove={async(targetSiteId,reason)=>{const companyId=getActiveCompanyId();if(!movingAsset||!companyId)return;if(movingAsset.assignedTo)throw new Error('Return this assigned asset before moving it to another site.');if(['super_admin','admin'].includes(currentUser.role)){onAssetsChange(assets.map(asset=>asset.id===movingAsset.id?{...asset,siteId:targetSiteId,status:'available'}:asset));onHistoryChange([...history,{id:`H-${Date.now()}-MOVE`,assetId:movingAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:movingAsset.siteId,to:targetSiteId,siteId:targetSiteId,reason,notes:'Asset moved by Super Admin.'}]);}else{await requestTransfer({requestType:'asset',sourceCompanyId:companyId,sourceSiteId:movingAsset.siteId,targetCompanyId:companyId,targetSiteId,entityId:movingAsset.id,newAssetTag:movingAsset.assetTag,reason});}}} />
+      <ChangeHolderDialog asset={holderAsset} canCreate={isSuperAdmin} onClose={()=>setHolderAsset(null)} onConfirm={(holder,note)=>{if(!holderAsset)return;const was=currentHolder(holderAsset,holders);onAssetsChange(assets.map(a=>a.id===holderAsset.id?{...a,heldBy:holder.id}:a));onHistoryChange([...history,{id:`H-${Date.now()}-HOLDER-${holderAsset.id}`,assetId:holderAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:was?.name||'No holder',to:holder.name,siteId:holderAsset.siteId,reason:'Holder changed',notes:note}]);toast.success(`${holderAsset.assetTag} is now held by ${holder.name}`);setHolderAsset(null);}} />
+      <MoveAssetDialog asset={movingAsset} locations={sitesList} onClose={()=>setMovingAsset(null)} onMove={async(targetSiteId,reason)=>{const companyId=getActiveCompanyId();if(!movingAsset||!companyId)return;if(movingAsset.assignedTo)throw new Error('Return this assigned asset before moving it to another site.');if(['super_admin','admin'].includes(currentUser.role)){onAssetsChange(assets.map(asset=>asset.id===movingAsset.id?{...asset,siteId:targetSiteId,status:'available',heldBy:defaultHolder(holders,targetSiteId)?.id}:asset));onHistoryChange([...history,{id:`H-${Date.now()}-MOVE`,assetId:movingAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:movingAsset.siteId,to:targetSiteId,siteId:targetSiteId,reason,notes:'Asset moved by Super Admin.'}]);}else{await requestTransfer({requestType:'asset',sourceCompanyId:companyId,sourceSiteId:movingAsset.siteId,targetCompanyId:companyId,targetSiteId,entityId:movingAsset.id,newAssetTag:movingAsset.assetTag,reason});}}} />
       <ReverseReceiptDialog asset={reversingReceipt} onClose={()=>setReversingReceipt(null)} onReverse={async(reason)=>{if(!reversingReceipt)return;const updated=await reverseInvoiceReceipt(reversingReceipt.id,reason) as Asset;onAssetsChange(assets.map(asset=>asset.id===updated.id?updated:asset));onHistoryChange([...history,{id:`H-${Date.now()}-RECEIPT-REVERSED`,assetId:updated.id,timestamp:new Date().toISOString(),action:'Updated',performedBy:currentUser.id,reason,notes:'Invoice receipt reversed by Super Admin.'}]);}} />
       {labelAssets && <Suspense fallback={null}><LabelPrintDialog assets={assets} initialSelection={labelAssets} users={usersList} onClose={() => setLabelAssets(null)} /></Suspense>}
 
@@ -880,6 +894,7 @@ function AssetActionMenu({
   onHistory,
   onEdit,
   onMove,
+  onChangeHolder,
   onTransfer,
   onReverseReceipt,
   onLabel,
@@ -891,6 +906,8 @@ function AssetActionMenu({
   onHistory: () => void;
   onEdit: () => void;
   onMove: () => void;
+  /** Only offered while the asset is not assigned to an employee. */
+  onChangeHolder?: () => void;
   onTransfer: () => void;
   onReverseReceipt?: () => void;
   onLabel?: () => void;
@@ -907,6 +924,7 @@ function AssetActionMenu({
         <DropdownMenuItem onSelect={onEdit}><Edit />Edit asset</DropdownMenuItem>
         <DropdownMenuItem onSelect={onHistory}><History />View history</DropdownMenuItem>
         {onLabel&&<DropdownMenuItem onSelect={onLabel}><Printer />Print label</DropdownMenuItem>}
+        {onChangeHolder && <DropdownMenuItem onSelect={onChangeHolder}><Building2 />Change holder</DropdownMenuItem>}
         <DropdownMenuItem onSelect={onMove}><History />Move to site</DropdownMenuItem>
         <DropdownMenuItem onSelect={onTransfer}><Building2 />Transfer to another company</DropdownMenuItem>
         {onReverseReceipt&&<DropdownMenuItem onSelect={onReverseReceipt}>Reverse invoice receipt</DropdownMenuItem>}

@@ -16,11 +16,21 @@ export interface Holder {
 
 export const HOLDER_KIND_LABEL: Record<HolderKind, string> = {
   stock: 'Stock (spares and new assets)',
-  shared: 'Shared device or place',
+  shared: 'Deployed place (server room, gate, reception…)',
   vacant: 'Vacant desk',
 };
 
 export const stockHolderName = (siteName: string) => `IT Assets Manager – ${siteName}`;
+
+/**
+ * When a site is renamed, its stock holder follows if it still has the automatic name.
+ * A name someone typed themselves is left alone. Returns the same array when nothing changes.
+ */
+export function renameStockHolders(holders: Holder[], siteId: string, oldSiteName: string, newSiteName: string): Holder[] {
+  const oldName = stockHolderName(oldSiteName);
+  if (oldSiteName === newSiteName || !holders.some(h => h.siteId === siteId && h.kind === 'stock' && h.name === oldName)) return holders;
+  return holders.map(h => (h.siteId === siteId && h.kind === 'stock' && h.name === oldName ? { ...h, name: stockHolderName(newSiteName) } : h));
+}
 
 /** The site's stock holder: where new and returned assets go. */
 export function defaultHolder(holders: Holder[], siteId: string): Holder | undefined {

@@ -1,6 +1,6 @@
 import { getCollection } from '@/lib/db';
 import { HolderEditor } from './HolderEditor';
-import { stockHolderName, type Holder } from '@/lib/holders';
+import { renameStockHolders, stockHolderName, type Holder } from '@/lib/holders';
 import { masterLabel } from '@/lib/masterLabel';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
@@ -208,6 +208,9 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
             onSubmit={(data, options) => {
               if (editingLocation) {
                 onSitesChange(sitesList.map(l => l.id === editingLocation.id ? { ...l, ...data } : l));
+                // A holder still carrying the automatic name follows the site's new name; a name someone chose is left alone.
+                const renamed = renameStockHolders(holders, editingLocation.id, editingLocation.name, data.name);
+                if (renamed !== holders) setHolders(renamed);
               } else {
                 const newLocation: Location = {
                   id: `LOC-${String(sitesList.length + 1).padStart(3, '0')}`,

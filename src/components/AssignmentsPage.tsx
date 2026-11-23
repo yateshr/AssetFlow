@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { defaultHolder, type Holder } from '@/lib/holders';
+import { currentHolder, defaultHolder, type Holder } from '@/lib/holders';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, ArrowRightLeft, CheckCircle, XCircle, Clock, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -133,7 +133,8 @@ export function AssignmentsPage({
     setShowReturnModal(null);
   };
 
-  const availableAssets = assetsList.filter(a => a.status === 'available');
+  // Equipment deployed at a place (held by a shared holder: CCTV, router, rack…) is not on offer to hand out.
+  const availableAssets = assetsList.filter(a => a.status === 'available' && currentHolder(a, holders)?.kind !== 'shared');
   const activeUsers = usersList.filter(user => user.status === 'active');
 
   return (

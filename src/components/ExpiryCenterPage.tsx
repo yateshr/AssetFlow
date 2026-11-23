@@ -11,7 +11,9 @@ import { useCollection } from '@/lib/db';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 import type { Asset, Invoice, SoftwareLicense, Vendor } from '@/data/models';
 import { formatDate } from '@/data/models';
-import { KIND_LABEL, buildExpiryAlerts, describeDays, type ExpiryAlert, type ExpiryKind, type Severity } from '@/lib/alerts';
+import { KIND_LABEL, buildExpiryAlerts, describeDays, isUndated, type ExpiryAlert, type ExpiryKind, type Severity } from '@/lib/alerts';
+import type { Holder } from '@/lib/holders';
+import type { StockMinimum } from '@/lib/stock';
 import type { Page } from './App';
 import { WarrantyTracker } from './WarrantyTracker';
 
@@ -30,9 +32,9 @@ const SEVERITY_STYLE: Record<Severity, string> = {
 
 const WINDOWS = [
   { key: 'all', label: 'All', test: () => true },
-  { key: 'expired', label: 'Expired / overdue', test: (a: ExpiryAlert) => a.days < 0 },
-  { key: '30', label: 'Next 30 days', test: (a: ExpiryAlert) => a.days >= 0 && a.days <= 30 },
-  { key: '90', label: '31–90 days', test: (a: ExpiryAlert) => a.days > 30 && a.days <= 90 },
+  { key: 'expired', label: 'Expired / overdue', test: (a: ExpiryAlert) => a.days < 0 || isUndated(a) },
+  { key: '30', label: 'Next 30 days', test: (a: ExpiryAlert) => !isUndated(a) && a.days >= 0 && a.days <= 30 },
+  { key: '90', label: '31–90 days', test: (a: ExpiryAlert) => !isUndated(a) && a.days > 30 && a.days <= 90 },
 ] as const;
 
 export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavigate }: Props) {
@@ -45,9 +47,16 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
   const [query, setQuery] = useState('');
   const [view, setView] = useState<'alerts' | 'warranty'>('alerts');
 
+  const [holders] = useCollection<Holder>('holders');
+  const [minimums] = useCollection<StockMinimum>('stock-minimums');
+  const [sites] = useCollection<{ id: string; name: string }>('locations');
+  const [categories] = useCollection<{ id: string; name: string }>('asset-categories');
   const alerts = useMemo(
-    () => buildExpiryAlerts({ assets: assetsList, licenses, vendors: vendorsList, invoices: invoicesList, policy }),
-    [assetsList, licenses, vendorsList, invoicesList, policy]
+    () => buildExpiryAlerts({
+      assets: assetsList, licenses, vendors: vendorsList, invoices: invoicesList, policy,
+      stock: { holders, minimums, siteName: id => sites.find(s => s.id === id)?.name || id, typeName: id => categories.find(c => c.id === id)?.name || id },
+    }),
+    [assetsList, licenses, vendorsList, invoicesList, policy, holders, minimums, sites, categories]
   );
 
   const counts = useMemo(() => {
@@ -66,9 +75,9 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
     );
   }, [alerts, kind, window, query]);
 
-  const expired = alerts.filter(a => a.days < 0 || a.kind === 'seats').length;
-  const soon = alerts.filter(a => a.kind !== 'seats' && a.days >= 0 && a.days <= 30).length;
-  const later = alerts.filter(a => a.kind !== 'seats' && a.days > 30).length;
+  const expired = alerts.filter(a => a.days < 0 || isUndated(a)).length;
+  const soon = alerts.filter(a => !isUndated(a) && a.days >= 0 && a.days <= 30).length;
+  const later = alerts.filter(a => !isUndated(a) && a.days > 30).length;
 
   const buildExport = () => ({
     name: 'expiry-alerts', sheet: 'Expiry alerts',
@@ -181,7 +190,7 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
                     <TableCell className="tabular-nums">{a.date ? formatDate(a.date) : '—'}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={SEVERITY_STYLE[a.severity]}>
-                        {a.kind === 'seats' ? a.title : `${a.kind === 'invoice' ? (a.days < 0 ? 'Overdue' : 'Due') : (a.days < 0 ? 'Expired' : 'Expires')} ${describeDays(a.days)}`}
+                        {isUndated(a) ? a.title : `${a.kind === 'invoice' ? (a.days < 0 ? 'Overdue' : 'Due') : (a.days < 0 ? 'Expired' : 'Expires')} ${describeDays(a.days)}`}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

@@ -50,7 +50,7 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
     <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
       <div>
         <h4 className="font-semibold">Asset holders</h4>
-        <p className="text-xs text-muted-foreground">Who holds assets that are not given to an employee. Each site has <b>one</b> IT Assets Manager (the stock holder): new assets from an invoice go to it. You can add other holders for shared devices and vacant desks.</p>
+        <p className="text-xs text-muted-foreground">Who holds assets that are not given to an employee. Each site has <b>one</b> IT Assets Manager (the stock holder): new assets from an invoice go to it. Add a holder for each place where equipment is deployed (server room, gate, reception) and for vacant desks, then use “Change holder” on an asset to put it there.</p>
       </div>
 
       {mine.length > 0 && (
@@ -78,7 +78,7 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
 
       <div className="flex flex-wrap gap-2">
         <Input className="h-9 min-w-[12rem] flex-1" value={name} onChange={e => { setName(e.target.value); setError(''); }} aria-label="New holder name"
-          placeholder={kind === 'stock' ? stockHolderName(siteName) : 'Name, e.g. RPP 1 camera'}
+          placeholder={kind === 'stock' ? stockHolderName(siteName) : 'Place, e.g. Server room, Gate 1 camera'}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
         <select className={select} aria-label="Holder kind" value={kind} onChange={e => setKindChoice(e.target.value as HolderKind)}>
           {(Object.keys(HOLDER_KIND_LABEL) as HolderKind[]).filter(k => k !== 'stock' || !hasStock).map(k => <option key={k} value={k}>{HOLDER_KIND_LABEL[k]}</option>)}
