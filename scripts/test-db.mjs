@@ -376,6 +376,15 @@ test('an employee ID can belong to only one employee in a company', async (q, f)
   await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E4', '1002', 'Asha Rao')]); // same name, different ID is fine
 });
 
+test('employees may have blank e-mail addresses, real addresses stay unique', async (q, f) => {
+  await as(q, f.admin, f.emailAdmin);
+  const emp = (id, code, email) => JSON.stringify([{ id, employeeId: code, name: 'N' + id, email, department: 'HR', siteId: 'SITE-A1', role: 'user', status: 'active' }]);
+  await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('B1', '2001', '')]);
+  await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('B2', '2002', '')]);
+  await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('B3', '2003', 'same@x.invalid')]);
+  await rejects(q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('B4', '2004', 'same@x.invalid')]), /duplicate|unique/i);
+});
+
 test('a site admin cannot delete even their own site', async (q, f) => {
   await asSite(q, f);
   await rejects(q(`select assetflow_delete_company_records($1,'locations',$2)`, [f.A, ['SITE-A1']]), /Only company-wide administrators/i);

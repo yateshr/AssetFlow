@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { ExportMenu } from '@/components/ExportMenu';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Users } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { isEmployee } from '@/lib/people';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +33,7 @@ export function DepartmentsPage({
   const [editingDepartment, setEditingDepartment] = useState<string | null>(null);
   const [editingDepartmentValue, setEditingDepartmentValue] = useState('');
   const [departmentError, setDepartmentError] = useState('');
+  const [viewingMembers, setViewingMembers] = useState<string | null>(null);
   const [siteId, setSiteId] = useState(sitesList[0]?.id || '');
   const scopedDepartments = departmentRecords.filter(item => item.siteId === siteId).map(item => item.name);
   const shownDepartments = departmentRecords.length ? scopedDepartments : departmentsList;
@@ -232,6 +235,7 @@ export function DepartmentsPage({
                         </>
                       ) : (
                         <>
+                          <Button size="icon-sm" variant="ghost" title={`See who is in ${department}`} aria-label={`Employees in ${department}`} onClick={() => setViewingMembers(department)}><Users className="h-4 w-4" /></Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -257,6 +261,27 @@ export function DepartmentsPage({
           </div>
         </CardContent>
       </Card>
+      <Dialog open={viewingMembers !== null} onOpenChange={o => { if (!o) setViewingMembers(null); }}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{viewingMembers}</DialogTitle>
+            <DialogDescription>{sitesList.find(l => l.id === siteId)?.name || 'All sites'} · employees in this department</DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const members = usersList.filter(u => isEmployee(u) && u.department === viewingMembers && (!siteId || u.siteId === siteId)).sort((a, b) => a.name.localeCompare(b.name));
+            return members.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nobody is in this department yet.</p> : (
+              <ul className="divide-y rounded-lg border text-sm">
+                {members.map(u => (
+                  <li key={u.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="min-w-0 truncate">{u.name}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">{u.employeeId || '—'}{u.status !== 'active' ? ' · ' + (u.status === 'left' ? 'left' : 'inactive') : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

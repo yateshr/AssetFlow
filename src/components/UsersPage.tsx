@@ -4,7 +4,7 @@ import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
 import { isEmployee } from '@/lib/people';
 import { ExportMenu } from '@/components/ExportMenu';
-import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft, Upload } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft, Upload, ChevronLeft, ChevronRight, MailX } from 'lucide-react';
 import { getActiveCompanyId, listTransferLocations, requestTransfer, transferEmployee } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,13 @@ export function UsersPage({
   history, onHistoryChange, currentUser, companies
 }: UsersPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [siteFilter, setSiteFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  // Rows per page is remembered on this computer.
+  const [pageSize, setPageSize] = useState(() => { try { const n = Number(localStorage.getItem('assetflow-employees-page-size')); return [10, 25, 50, 100].includes(n) ? n : 25; } catch { return 25; } });
+  const changePageSize = (n: number) => { setPageSize(n); setPage(1); try { localStorage.setItem('assetflow-employees-page-size', String(n)); } catch { /* ignore */ } };
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -79,8 +86,25 @@ export function UsersPage({
       user.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
       Boolean(userLocation?.name.toLowerCase().includes(searchQuery.toLowerCase()));
     
-    return matchesSearch;
+    const matchesSite = siteFilter === 'all' || user.siteId === siteFilter;
+    const matchesDepartment = departmentFilter === 'all' || user.department === departmentFilter;
+    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+    return matchesSearch && matchesSite && matchesDepartment && matchesStatus;
   });
+  const employeeList = usersList.filter(isEmployee);
+  const departmentOptions = [...new Set(employeeList.filter(u => siteFilter === 'all' || u.siteId === siteFilter).map(u => u.department).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const filtersActive = siteFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || searchQuery !== '';
+  // E-mail is optional. Older imports invented addresses ending in @import.local: offer to clear them.
+  const invented = employeeList.filter(u => /@import\.local$/i.test(u.email || ''));
+  const clearInvented = async () => {
+    if (await confirmDialog({ title: 'Clear generated e-mail addresses?', message: `${invented.length} employee${invented.length === 1 ? ' has' : 's have'} an address made up by an earlier import (ending in @import.local). They will be left blank. Real addresses are not touched.`, confirmLabel: 'Clear them' })) {
+      onUsersChange(usersList.map(u => (isEmployee(u) && /@import\.local$/i.test(u.email || '') ? { ...u, email: '' } : u)));
+      toast.success('Generated e-mail addresses cleared');
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (id === currentUserId) {
@@ -125,10 +149,25 @@ export function UsersPage({
                 placeholder="Search by name, email, or department..."
                 className="pl-9"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               />
             </div>
+            {([
+              ['Site', siteFilter, (v: string) => { setSiteFilter(v); setDepartmentFilter('all'); setPage(1); }, [['all', 'All sites'], ...sitesList.map(l => [l.id, l.name])]],
+              ['Department', departmentFilter, (v: string) => { setDepartmentFilter(v); setPage(1); }, [['all', 'All departments'], ...departmentOptions.map(d => [d, d])]],
+              ['Status', statusFilter, (v: string) => { setStatusFilter(v); setPage(1); }, [['all', 'Any status'], ['active', 'Active'], ['inactive', 'Inactive'], ['left', 'Left company']]],
+            ] as Array<[string, string, (v: string) => void, string[][]]>).map(([label, value, set, options]) => (
+              <select key={label} aria-label={label} value={value} onChange={e => set(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                {options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+              </select>
+            ))}
+            {filtersActive && <Button variant="ghost" onClick={() => { setSearchQuery(''); setSiteFilter('all'); setDepartmentFilter('all'); setStatusFilter('all'); setPage(1); }}>Clear</Button>}
           </div>
+          {invented.length > 0 && (
+            <button type="button" onClick={() => void clearInvented()} className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-sm hover:bg-amber-500/10">
+              <MailX className="h-4 w-4" /> {invented.length} generated e-mail address{invented.length === 1 ? '' : 'es'} (@import.local): clear them
+            </button>
+          )}
         </CardContent>
       </Card>
 
@@ -151,12 +190,12 @@ export function UsersPage({
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     No employees found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredUsers.map((user) => {
+                pageUsers.map((user) => {
                   const location = sitesList.find(item => item.id === user.siteId);
 
                   return (
@@ -172,7 +211,7 @@ export function UsersPage({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{user.email || '—'}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{user.employeeId || '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.department}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{location?.name || '-'}</TableCell>
@@ -222,6 +261,21 @@ export function UsersPage({
               )}
             </TableBody>
           </Table>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
+            <span>{filteredUsers.length === 0 ? '0 employees' : `${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, filteredUsers.length)} of ${filteredUsers.length}`}</span>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2">Rows per page
+                <select aria-label="Rows per page" value={pageSize} onChange={e => changePageSize(Number(e.target.value))} className="h-8 rounded-md border border-input bg-background px-2">
+                  {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                <span className="min-w-[5rem] text-center tabular-nums">Page {safePage} of {pageCount}</span>
+                <Button variant="outline" size="icon-sm" aria-label="Next page" disabled={safePage >= pageCount} onClick={() => setPage(safePage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -719,18 +773,16 @@ function UserForm({ user, onSubmit, onCancel, departmentsList, departmentRecords
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Email</label>
+          <label className="text-sm font-medium">Email <span className="font-normal text-muted-foreground">(optional)</span></label>
           <Input
             type="email"
-            required
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Phone</label>
+          <label className="text-sm font-medium">Phone <span className="font-normal text-muted-foreground">(optional)</span></label>
           <Input
-            required
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
           />

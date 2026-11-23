@@ -191,7 +191,7 @@ function parseAssetRegister(workbook: XLSX.WorkBook, out: WorkbookImport) {
       continue;
     }
     if (!name || isPlaceholderEmployee(code) || isPlaceholderEmployee(name)) continue;
-    const user: User = { id: `EMP-${code}`, name, email: `${slug(code)}@import.local`, department, siteId: location ? `LOC-${slug(location)}` : '', role: 'user', phone: '', joinDate: new Date().toISOString().slice(0, 10), status: /LEFT|INACTIVE/i.test(`${name} ${department}`) ? 'left' : 'active' };
+    const user: User = { id: `EMP-${code}`, name, email: '', department, siteId: location ? `LOC-${slug(location)}` : '', role: 'user', phone: '', joinDate: new Date().toISOString().slice(0, 10), status: /LEFT|INACTIVE/i.test(`${name} ${department}`) ? 'left' : 'active' };
     employeeByCode.set(code, user); out.users.push(user);
     if (location) out.locations.push({ id: `LOC-${slug(location)}`, name: location, address: '', type: 'office', capacity: 0, manager: '' });
     if (department) out.departments.push({ id: department, name: department });

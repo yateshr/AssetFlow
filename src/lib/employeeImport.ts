@@ -249,7 +249,7 @@ export async function applyEmployeeImport(plan: EmployeePlan, options: { createM
       usedIds.add(id);
       out.push({
         id, employeeId: row.code, name: row.name,
-        email: `${slug(row.code) || 'employee'}@import.local`, department: row.department, siteId: site.id,
+        email: '', department: row.department, siteId: site.id,
         role: 'user', phone: '', joinDate: today, status: 'active',
       });
       result.created++;
