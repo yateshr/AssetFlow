@@ -133,7 +133,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
   });
   const [currentPage, setCurrentPage] = useState<Page>(() => (assetSearchRequest ? 'assets' : 'dashboard'));
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [operationsTab, setOperationsTab] = useState('overview');
+  const [operationsTab] = useState('stock');
   const [notificationCount, setNotificationCount] = useState(0);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [assetFilterRequest, setAssetFilterRequest] = useState<{ status?: Asset['status']; warranty?: 'expired' | '30' | '60' | '90'; type?: Asset['type'] } | null>(null);
@@ -254,9 +254,6 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
             onHistoryChange={setAssetHistory}
             currentUser={signedInUser}
             initialTab={operationsTab}
-            onNotificationsChange={setNotificationCount}
-            notificationOpen={notificationOpen}
-            onNotificationOpenChange={setNotificationOpen}
           />
         );
       case 'assets':

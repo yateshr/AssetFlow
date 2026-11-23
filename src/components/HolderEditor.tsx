@@ -19,7 +19,10 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
   const [users] = useCollection<User>('users');
   const mine = holders.filter(h => h.siteId === siteId);
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<HolderKind>(mine.some(h => h.kind === 'stock') ? 'shared' : 'stock');
+  const hasStock = mine.some(h => h.kind === 'stock' && h.active);
+  const [kindChoice, setKindChoice] = useState<HolderKind>('stock');
+  // A site has exactly one IT Assets Manager (stock holder): once it exists only other kinds can be added.
+  const kind: HolderKind = kindChoice === 'stock' && hasStock ? 'shared' : kindChoice;
   const [error, setError] = useState('');
 
   const held = useMemo(() => {
@@ -36,7 +39,7 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
     if (!label) { setError('Enter a name, for example “RPP 1 camera”.'); return; }
     if (holders.some(h => h.siteId === siteId && h.name.trim().toLowerCase() === label.toLowerCase())) { setError(`“${label}” already exists at this site.`); return; }
     setHolders([...holders, { id: `HLD-${crypto.randomUUID().slice(0, 8)}`, siteId, kind, name: label, active: true }]);
-    setName(''); setError(''); setKind('shared');
+    setName(''); setError(''); setKindChoice('shared');
   };
 
   const remove = async (h: Holder) => {
@@ -47,7 +50,7 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
     <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
       <div>
         <h4 className="font-semibold">Asset holders</h4>
-        <p className="text-xs text-muted-foreground">Who holds assets that are not given to an employee. New assets from an invoice go to this site&apos;s <b>stock</b> holder.</p>
+        <p className="text-xs text-muted-foreground">Who holds assets that are not given to an employee. Each site has <b>one</b> IT Assets Manager (the stock holder): new assets from an invoice go to it. You can add other holders for shared devices and vacant desks.</p>
       </div>
 
       {mine.length > 0 && (
@@ -65,7 +68,7 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
                 <span className="text-xs text-muted-foreground">{count} held</span>
                 {h.active
                   ? <Button type="button" size="sm" variant="ghost" onClick={() => patch(h.id, { active: false })} title="Stop using this holder"><Archive className="h-4 w-4" /></Button>
-                  : <Button type="button" size="sm" variant="ghost" onClick={() => patch(h.id, { active: true })}><Undo2 className="h-4 w-4" /></Button>}
+                  : <Button type="button" size="sm" variant="ghost" disabled={h.kind === 'stock' && hasStock} onClick={() => patch(h.id, { active: true })} title={h.kind === 'stock' && hasStock ? 'This site already has an active IT Assets Manager' : 'Use this holder again'}><Undo2 className="h-4 w-4" /></Button>}
                 <Button type="button" size="icon-sm" variant="ghost" disabled={count > 0} onClick={() => void remove(h)} aria-label={`Delete ${h.name}`} title={count > 0 ? 'Holds assets: archive it instead' : 'Delete'}><Trash2 className={`h-4 w-4 ${count > 0 ? '' : 'text-destructive'}`} /></Button>
               </li>
             );
@@ -77,8 +80,8 @@ export function HolderEditor({ siteId, siteName, assets }: { siteId: string; sit
         <Input className="h-9 min-w-[12rem] flex-1" value={name} onChange={e => { setName(e.target.value); setError(''); }} aria-label="New holder name"
           placeholder={kind === 'stock' ? stockHolderName(siteName) : 'Name, e.g. RPP 1 camera'}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
-        <select className={select} aria-label="Holder kind" value={kind} onChange={e => setKind(e.target.value as HolderKind)}>
-          {(Object.keys(HOLDER_KIND_LABEL) as HolderKind[]).map(k => <option key={k} value={k}>{HOLDER_KIND_LABEL[k]}</option>)}
+        <select className={select} aria-label="Holder kind" value={kind} onChange={e => setKindChoice(e.target.value as HolderKind)}>
+          {(Object.keys(HOLDER_KIND_LABEL) as HolderKind[]).filter(k => k !== 'stock' || !hasStock).map(k => <option key={k} value={k}>{HOLDER_KIND_LABEL[k]}</option>)}
         </select>
         <Button type="button" size="sm" variant="outline" onClick={add}><Plus className="h-4 w-4" /> Add holder</Button>
       </div>

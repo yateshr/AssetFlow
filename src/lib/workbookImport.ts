@@ -98,6 +98,14 @@ export async function parseAssetWorkbooks(files: File[]): Promise<WorkbookImport
   result.callLogs = uniqueBy(result.callLogs, item => item.id);
   result.stock = uniqueBy(result.stock, item => item.id);
   result.holders = uniqueBy(result.holders, item => item.id);
+  // One IT Assets Manager per site: a second stock account of the same site is kept as a shared holder.
+  const stockSeen = new Set<string>();
+  result.holders = result.holders.map(h => {
+    if (h.kind !== 'stock') return h;
+    if (stockSeen.has(h.siteId)) return { ...h, kind: 'shared' as const };
+    stockSeen.add(h.siteId);
+    return h;
+  });
   // Every site that has unassigned assets needs a stock holder to keep them.
   for (const site of uniqueBy(result.locations, l => l.id)) {
     if (!result.holders.some(h => h.siteId === site.id && h.kind === 'stock')) {

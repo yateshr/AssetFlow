@@ -7,7 +7,7 @@ vi.mock('@/lib/db', () => mockDb());
 import { holderKindFor, parseAssetWorkbooks } from '@/lib/workbookImport';
 
 /** A small register in the same layout as the real one: the Employee sheet starts in column B. */
-function workbook(): File {
+function workbook(extraEmployeeRows: unknown[][] = []): File {
   const wb = XLSX.utils.book_new();
   const employee = XLSX.utils.aoa_to_sheet(
     [
@@ -16,6 +16,7 @@ function workbook(): File {
       [2, '90103-1', 'IT Assets Manager Nahuli', 'NAHULI', 'IT', '', ''],
       [3, 'IT-CAM-001', 'RPP 1 CAMERA', 'SOMNATH', 'IT', '', ''],
       [4, 'Ex-Employee 1', 'Unassigned PC', 'SOMNATH', 'VACANT-DESIGN', '', ''],
+      ...extraEmployeeRows,
     ],
     { origin: 'B1' },
   );
@@ -93,5 +94,13 @@ describe('workbook import', () => {
     const r = await parseAssetWorkbooks([workbook()]);
     const somnath = r.locations.find(l => /SOMNATH/i.test(l.name))!;
     expect(r.holders.some(h => h.siteId === somnath.id && h.kind === 'stock')).toBe(true);
+  });
+
+  it('keeps only one stock holder per site; a second stock-looking row becomes shared', async () => {
+    const r = await parseAssetWorkbooks([workbook([[5, 'IT SPARE', 'IT STAND BY', 'NAHULI', 'IT', '', '']])]);
+    const nahuli = r.locations.find(l => /NAHULI/i.test(l.name))!;
+    const here = r.holders.filter(h => h.siteId === nahuli.id);
+    expect(here.filter(h => h.kind === 'stock')).toHaveLength(1);
+    expect(here.find(h => h.name === 'IT STAND BY')).toMatchObject({ kind: 'shared' });
   });
 });
