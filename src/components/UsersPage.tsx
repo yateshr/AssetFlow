@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { EmployeeImportDialog } from './EmployeeImportDialog';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
 import { ExportMenu } from '@/components/ExportMenu';
-import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft, Upload } from 'lucide-react';
 import { getActiveCompanyId, listTransferLocations, requestTransfer, transferEmployee } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +41,7 @@ export function UsersPage({
 }: UsersPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [departingUser, setDepartingUser] = useState<User | null>(null);
   const [departureCondition, setDepartureCondition] = useState<'good' | 'fair' | 'damaged'>('good');
@@ -97,6 +99,7 @@ export function UsersPage({
           <p className="text-muted-foreground">Manage employee records, departments and assigned sites. Portal access is managed separately for IT staff.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+        {['super_admin', 'admin'].includes(currentUser.role) && <Button variant="outline" onClick={() => setShowImport(true)}><Upload className="h-4 w-4 mr-2" />Import</Button>}
         <ExportMenu disabled={filteredUsers.length === 0} build={() => ({
           name: 'employees', sheet: 'Employees',
           headers: ['Employee ID', 'Name', 'Email', 'Phone', 'Department', 'Site', 'Role', 'Status', 'Join Date'],
@@ -220,6 +223,7 @@ export function UsersPage({
         </CardContent>
       </Card>
 
+      <EmployeeImportDialog open={showImport} onClose={() => setShowImport(false)} />
       <DepartmentsPage
         departmentsList={departmentsList}
         onDepartmentsChange={onDepartmentsChange}

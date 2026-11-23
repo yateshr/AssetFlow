@@ -238,6 +238,8 @@ export async function upsertIntoCollection<T extends Doc>(collection: string, it
   if (!items.length) return;
   const b = bucket(collection);
   items.forEach(i => b.set(i.id, i));
+  // Screens already showing this collection update straight away.
+  publish(collection, getCollection(collection), () => {});
   upsertRows(collection, items);
   await queue;
 }
