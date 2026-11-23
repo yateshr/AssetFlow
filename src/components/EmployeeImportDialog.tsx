@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Upload, UserCheck, UserPlus } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ const TONE: Record<RowAction, string> = {
   error: 'bg-destructive/10 text-destructive border-destructive/25',
 };
 const LABEL: Record<RowAction, string> = { new: 'New', update: 'Update', unchanged: 'No change', error: 'Not imported' };
+const TILE: Record<RowAction, string> = { new: 'New: will be added', update: 'Changed: will be updated', unchanged: 'Already there: skipped', error: 'Problems: not imported' };
 const PREVIEW_ROWS = 200;
 
 /** Dark console with green text, one line at a time. */
@@ -53,10 +55,12 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
   const [progress, setProgress] = useState<{ value: number; label: string } | null>(null);
   const [createSites, setCreateSites] = useState(true);
   const [error, setError] = useState('');
+  const [view, setView] = useState<RowAction | null>(null);
+  const [q, setQ] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const busy = progress !== null;
 
-  const reset = () => { setPlan(null); setResult(null); setError(''); setCreateSites(true); setProgress(null); setReading(false); if (input.current) input.current.value = ''; };
+  const reset = () => { setView(null); setQ(''); setPlan(null); setResult(null); setError(''); setCreateSites(true); setProgress(null); setReading(false); if (input.current) input.current.value = ''; };
   const close = () => { if (busy) return; reset(); onClose(); };
 
   const choose = async (file?: File) => {
@@ -74,6 +78,10 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
 
   const counts = (plan?.rows ?? []).reduce((a, r) => ({ ...a, [r.action]: (a[r.action] || 0) + 1 }), {} as Partial<Record<RowAction, number>>);
   const skippedForSites = createSites ? 0 : (plan?.rows ?? []).filter(r => r.action !== 'error' && plan?.newSites.some(s => s.toUpperCase() === r.site.toUpperCase())).length;
+  // Show what needs a decision first: problems, then new, then changes, then the rows that are already there.
+  const shownView: RowAction = view ?? (['error', 'new', 'update', 'unchanged'] as RowAction[]).find(a => counts[a]) ?? 'new';
+  const needle = q.trim().toLowerCase();
+  const shownRows = (plan?.rows ?? []).filter(r => r.action === shownView && (!needle || `${r.code} ${r.name} ${r.department}`.toLowerCase().includes(needle)));
   const willSave = (counts.new || 0) + (counts.update || 0) - skippedForSites;
 
   const run = async () => {
@@ -163,11 +171,27 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
 
             {!result && (
               <>
-                <div className="flex flex-wrap gap-2">
-                  {(['new', 'update', 'unchanged', 'error'] as RowAction[]).filter(a => counts[a]).map(a => (
-                    <Badge key={a} variant="outline" className={TONE[a]}>{counts[a]} {LABEL[a].toLowerCase()}</Badge>
-                  ))}
-                  {plan.rows.length === 0 && <span className="text-sm text-muted-foreground">The file has no employee rows.</span>}
+                <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                  <b>{plan.rows.length} row{plan.rows.length === 1 ? '' : 's'} in this file.</b>{' '}
+                  {(counts.new || 0) > 0 ? <>{counts.new} new employee{counts.new === 1 ? '' : 's'} will be added. </> : <>No new employees. </>}
+                  {(counts.unchanged || 0) > 0 && <>{counts.unchanged} already in the system with the same details {counts.unchanged === 1 ? 'is' : 'are'} skipped. </>}
+                  {(counts.update || 0) > 0 && <>{counts.update} existing employee{counts.update === 1 ? '' : 's'} will be updated. </>}
+                  {(counts.error || 0) > 0 && <span className="text-destructive">{counts.error} row{counts.error === 1 ? ' has' : 's have'} problems and will not be imported.</span>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(['new', 'update', 'unchanged', 'error'] as RowAction[]).map(a => {
+                    const Icon = { new: UserPlus, update: RefreshCw, unchanged: UserCheck, error: AlertTriangle }[a];
+                    const on = shownView === a;
+                    return (
+                      <button key={a} type="button" onClick={() => setView(a)} aria-pressed={on} disabled={!counts[a]}
+                        className={`rounded-xl border p-3 text-left transition-all disabled:opacity-40 ${on ? 'ring-2 ring-primary shadow-sm' : 'hover:border-primary/40 hover:shadow-sm'} ${TONE[a]}`}>
+                        <Icon className="h-4 w-4" />
+                        <p className="mt-1 text-2xl font-semibold tabular-nums leading-none">{counts[a] || 0}</p>
+                        <p className="mt-1 text-xs font-medium">{TILE[a]}</p>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {plan.newSites.length > 0 && (
@@ -175,36 +199,43 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
                     <input type="checkbox" className="mt-1" checked={createSites} disabled={busy} onChange={e => setCreateSites(e.target.checked)} />
                     <span>
                       <b>Create {plan.newSites.length} site{plan.newSites.length === 1 ? '' : 's'} that {plan.newSites.length === 1 ? 'does' : 'do'} not exist yet:</b> {plan.newSites.join(', ')}
-                      <span className="block text-xs text-muted-foreground">Each new site gets a stock holder. Untick to skip the employees of these sites{skippedForSites ? ` (${skippedForSites} rows)` : ''}.</span>
+                      <span className="block text-xs text-muted-foreground">Each new site gets an IT Assets Manager. Untick to skip the employees of these sites{skippedForSites ? ` (${skippedForSites} rows)` : ''}.</span>
                     </span>
                   </label>
                 )}
-                {plan.newDepartments.length > 0 && <p className="text-sm text-muted-foreground">{plan.newDepartments.length} new department{plan.newDepartments.length === 1 ? '' : 's'} will be created.</p>}
+                {plan.newDepartments.length > 0 && <p className="text-xs text-muted-foreground">{plan.newDepartments.length} new department{plan.newDepartments.length === 1 ? '' : 's'} will also be created: {plan.newDepartments.slice(0, 6).join(', ')}{plan.newDepartments.length > 6 ? '…' : ''}</p>}
 
                 {plan.rows.length > 0 && (
-                  <div className="max-h-72 overflow-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-muted/80 text-left text-xs text-muted-foreground backdrop-blur">
-                        <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Site</th><th className="px-3 py-2">Department</th><th className="px-3 py-2">Result</th></tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {plan.rows.slice(0, PREVIEW_ROWS).map(r => (
-                          <tr key={r.line} className={r.action === 'error' ? 'bg-destructive/5' : ''}>
-                            <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{r.line}</td>
-                            <td className="px-3 py-1.5 font-mono text-xs">{r.code || '—'}</td>
-                            <td className="px-3 py-1.5">{r.name || '—'}</td>
-                            <td className="px-3 py-1.5">{r.site || '—'}</td>
-                            <td className="px-3 py-1.5">{r.department || '—'}</td>
-                            <td className="px-3 py-1.5">
-                              <Badge variant="outline" className={TONE[r.action]}>{LABEL[r.action]}</Badge>
-                              {r.problems.length > 0 && <span className="ml-2 text-xs text-destructive">{r.problems.join('; ')}</span>}
-                              {r.note && <span className="ml-2 text-xs text-muted-foreground">{r.note}</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {plan.rows.length > PREVIEW_ROWS && <p className="border-t p-2 text-center text-xs text-muted-foreground">Showing the first {PREVIEW_ROWS} of {plan.rows.length} rows. All rows are imported.</p>}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{TILE[shownView]} <span className="text-muted-foreground">({shownRows.length})</span></p>
+                      <Input className="h-8 max-w-[14rem]" value={q} onChange={e => setQ(e.target.value)} placeholder="Search code, name…" aria-label="Search rows" />
+                    </div>
+                    <div className="max-h-72 overflow-auto rounded-xl border">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10 bg-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                          <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Site</th><th className="px-3 py-2">Department</th><th className="px-3 py-2">Result</th></tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {shownRows.slice(0, PREVIEW_ROWS).map(r => (
+                            <tr key={r.line} className={r.action === 'error' ? 'bg-destructive/5' : 'hover:bg-muted/40'}>
+                              <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{r.line}</td>
+                              <td className="px-3 py-1.5 font-mono text-xs">{r.code || '—'}</td>
+                              <td className="px-3 py-1.5 font-medium">{r.name || '—'}</td>
+                              <td className="px-3 py-1.5">{r.site || '—'}</td>
+                              <td className="px-3 py-1.5">{r.department || '—'}</td>
+                              <td className="px-3 py-1.5">
+                                <Badge variant="outline" className={TONE[r.action]}>{LABEL[r.action]}</Badge>
+                                {r.problems.length > 0 && <span className="mt-1 block text-xs text-destructive">{r.problems.join('; ')}</span>}
+                                {r.note && <span className="mt-1 block text-xs text-muted-foreground">{r.note}</span>}
+                              </td>
+                            </tr>
+                          ))}
+                          {shownRows.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Nothing here.</td></tr>}
+                        </tbody>
+                      </table>
+                      {shownRows.length > PREVIEW_ROWS && <p className="border-t p-2 text-center text-xs text-muted-foreground">Showing the first {PREVIEW_ROWS} of {shownRows.length}. All rows are processed.</p>}
+                    </div>
                   </div>
                 )}
               </>
