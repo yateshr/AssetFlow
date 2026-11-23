@@ -359,6 +359,16 @@ test('only company-wide users can manage holders', async (q, f) => {
   await q(`select assetflow_upsert_company_records($1,'holders',$2::jsonb)`, [f.A, JSON.stringify([JSON.parse(holder('H-NEW', 'SITE-A1'))])]);
 });
 
+// ----------------------------------------------------------------- employee ids
+test('an employee ID can belong to only one employee in a company', async (q, f) => {
+  await as(q, f.admin, f.emailAdmin);
+  const emp = (id, code, name) => JSON.stringify([{ id, employeeId: code, name, email: id + '@x.invalid', department: 'HR', siteId: 'SITE-A1', role: 'user', status: 'active' }]);
+  await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E1', '1001', 'Asha Rao')]);
+  await rejects(q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E2', '1001', 'Someone Else')]), /duplicate|unique/i);
+  await rejects(q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E3', '1001', 'Asha Rao')]), /duplicate|unique/i); // same name, same ID
+  await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E4', '1002', 'Asha Rao')]); // same name, different ID is fine
+});
+
 // ----------------------------------------------------------------- runner
 let failed = 0;
 for (const { name, fn } of tests) {

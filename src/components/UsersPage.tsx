@@ -609,6 +609,12 @@ export function UsersPage({
           <UserForm 
             user={editingUser}
             onSubmit={(data) => {
+              const code = (data.employeeId || '').trim().toLowerCase();
+              const clash = code ? usersList.find(u => u.id !== editingUser?.id && (u.employeeId || '').trim().toLowerCase() === code) : undefined;
+              if (clash) {
+                toast.error(`Employee ID ${data.employeeId} is already used by ${clash.name}.`, { description: 'Every employee needs a different ID. Names and departments can repeat.' });
+                return;
+              }
               if (editingUser) {
                 if (data.status === 'left' && editingUser.status !== 'left') {
                   if (editingUser.id === currentUserId) {

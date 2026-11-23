@@ -4,7 +4,7 @@ import { mockDb, resetStore, rows, seed } from './helpers';
 
 vi.mock('@/lib/db', () => mockDb());
 
-import { applyEmployeeImport, EMPLOYEE_TEMPLATE_HEADERS, planEmployeeImport } from '@/lib/employeeImport';
+import { applyEmployeeImport, duplicateRows, EMPLOYEE_TEMPLATE_HEADERS, importLog, notImported, planEmployeeImport } from '@/lib/employeeImport';
 
 const file = (data: unknown[][], sheet = 'Employees', origin?: string) => {
   const wb = XLSX.utils.book_new();
@@ -48,8 +48,10 @@ describe('planning', () => {
     const plan = await planEmployeeImport(file([H, [1, '', 'No Code', 'Somnath', 'DISPATCH'], [2, '2', 'A', 'Somnath', 'DISPATCH'], [3, '2', 'B', 'Somnath', 'DISPATCH'], [4, 'SAMPLE-001', 'Sample', 'Somnath', 'DISPATCH'], [5, '5', 'No Dept', 'Somnath', '']]));
     const by = (line: number) => plan.rows.find(r => r.line === line)!;
     expect(by(2).problems).toContain('Code is empty');
-    expect(by(3).action).toBe('new');
-    expect(by(4).problems.join()).toMatch(/Same code as row 3/);
+    // A repeated ID cannot be trusted, so every row that uses it is held back.
+    expect(by(3).action).toBe('error');
+    expect(by(3).problems.join()).toMatch(/Duplicate ID 2: also on row 4/);
+    expect(by(4).problems.join()).toMatch(/Duplicate ID 2: also on row 3/);
     expect(by(5).problems.join()).toMatch(/Sample row/);
     expect(by(6).problems).toContain('Department is empty');
   });
@@ -70,6 +72,42 @@ describe('planning', () => {
     ]);
     const plan = await planEmployeeImport(file([H, [1, '1', 'Same Person', 'Somnath', 'DISPATCH'], [2, '2', 'New Name', 'Somnath', 'DISPATCH'], [3, '3', 'Brand New', 'Somnath', 'DISPATCH']]));
     expect(plan.rows.map(r => r.action)).toEqual(['unchanged', 'update', 'new']);
+  });
+});
+
+describe('not imported list and log', () => {
+  const messy = () => file([H, [1, '1', 'Good', 'Somnath', 'DISPATCH'], [2, '2', 'Twin', 'Somnath', 'DISPATCH'], [3, '2', 'Twin Again', 'Somnath', 'HR'], [4, '4', '', 'Somnath', 'HR']]);
+  it('lists exactly the rows that are held back, with their original row numbers and values', async () => {
+    const plan = await planEmployeeImport(messy());
+    const missed = notImported(plan);
+    expect(missed.map(r => r.line)).toEqual([3, 4, 5]);
+    expect(missed.map(r => r.srNo)).toEqual(['2', '3', '4']);
+    expect(duplicateRows(plan).map(r => r.line)).toEqual([3, 4]);
+  });
+  it('writes a console-style log with one line per problem', async () => {
+    const plan = await planEmployeeImport(messy());
+    const log = importLog(plan);
+    expect(log[0]).toMatch(/^\$ assetflow import/);
+    expect(log.filter(l => l.startsWith('[warn]'))).toHaveLength(2); // duplicates
+    expect(log.filter(l => l.startsWith('[fail]'))).toHaveLength(1); // missing name
+    expect(log.some(l => /Employee Name is empty/.test(l))).toBe(true);
+    expect(log.at(-1)).toMatch(/will be skipped/);
+    const done = importLog(plan, { created: 1, updated: 0, skipped: 3, sitesCreated: 0, departmentsCreated: 0 });
+    expect(done.at(-1)).toBe('[done] 1 added, 0 updated, 3 not imported');
+  });
+  it('explains a header mismatch in the log', async () => {
+    const plan = await planEmployeeImport(file([['Code', 'Name'], ['1', 'A']]));
+    expect(importLog(plan).some(l => l.startsWith('[fail]') && /Missing: Employee Name, Site, Department/.test(l))).toBe(true);
+  });
+  it('reports progress while saving', async () => {
+    seed('users', []);
+    const many = Array.from({ length: 250 }, (_, i) => [i + 1, String(1000 + i), 'P' + i, 'Somnath', 'DISPATCH']);
+    const plan = await planEmployeeImport(file([H, ...many]));
+    const steps: Array<[number, number]> = [];
+    await applyEmployeeImport(plan, { createMissingSites: false }, (done, total) => steps.push([done, total]));
+    expect(steps[0][0]).toBe(0);
+    expect(steps.at(-1)).toEqual([steps.at(-1)![1], steps.at(-1)![1]]);
+    expect(steps.length).toBeGreaterThanOrEqual(4); // start, 3 chunks (+ department), done
   });
 });
 
