@@ -83,6 +83,7 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
   const shownView: RowAction = view ?? (['error', 'new', 'update', 'unchanged'] as RowAction[]).find(a => counts[a]) ?? 'new';
   const needle = q.trim().toLowerCase();
   const shownRows = (plan?.rows ?? []).filter(r => r.action === shownView && (!needle || `${r.code} ${r.name} ${r.department}`.toLowerCase().includes(needle)));
+  const deptsOnly = plan ? plan.newDepartments.length : 0;
   const willSave = (counts.new || 0) + (counts.update || 0) - skippedForSites;
 
   const run = async () => {
@@ -221,7 +222,7 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
                     <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
                       <table className="w-full text-[13px]">
                         <thead className="sticky top-0 z-10 bg-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                          <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Site</th><th className="px-3 py-2">Department</th><th className="px-3 py-2">Result</th></tr>
+                          <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Employee Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Site</th><th className="px-3 py-2">Department</th><th className="px-3 py-2">Result</th></tr>
                         </thead>
                         <tbody className="divide-y">
                           {shownRows.slice(0, PREVIEW_ROWS).map(r => (
@@ -295,8 +296,8 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
           ) : (
             <>
               <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
-              <Button onClick={() => void run()} disabled={busy || reading || !plan || plan.missingHeaders.length > 0 || willSave <= 0}>
-                <CheckCircle2 className="h-4 w-4" /> {busy ? 'Importing…' : `Import ${Math.max(0, willSave)} employee${willSave === 1 ? '' : 's'}`}
+              <Button onClick={() => void run()} disabled={busy || reading || !plan || plan.missingHeaders.length > 0 || (willSave <= 0 && deptsOnly <= 0)}>
+                <CheckCircle2 className="h-4 w-4" /> {busy ? 'Importing…' : willSave <= 0 && deptsOnly > 0 ? `Create ${deptsOnly} department${deptsOnly === 1 ? '' : 's'}` : `Import ${Math.max(0, willSave)} employee${willSave === 1 ? '' : 's'}`}
               </Button>
             </>
           )}

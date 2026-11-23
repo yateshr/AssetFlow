@@ -92,7 +92,8 @@ export function UsersPage({
     return matchesSearch && matchesSite && matchesDepartment && matchesStatus;
   });
   const employeeList = usersList.filter(isEmployee);
-  const departmentOptions = [...new Set(employeeList.filter(u => siteFilter === 'all' || u.siteId === siteFilter).map(u => u.department).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  // The departments of the chosen site (all sites when none is chosen), whether or not anyone is in them yet.
+  const departmentOptions = [...new Set([...departmentRecords.filter(d => siteFilter === 'all' || d.siteId === siteFilter).map(d => d.name), ...employeeList.filter(u => siteFilter === 'all' || u.siteId === siteFilter).map(u => u.department)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const pageCount = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const pageUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);

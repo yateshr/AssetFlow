@@ -175,8 +175,8 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
 
                   <dl className="space-y-1.5 border-t pt-3 text-sm">
                     <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><UserRound className="h-4 w-4" /> IT Assets Manager</dt><dd className="min-w-0 truncate text-right font-medium text-foreground" title={holder?.name}>{holder?.name || <span className="font-normal text-amber-600 dark:text-amber-400">Not set up</span>}</dd></div>
-                    <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Users className="h-4 w-4" /> Site contact person</dt><dd className="min-w-0 truncate text-right text-foreground">{location.manager || '—'}</dd></div>
-                    {location.siteCode && <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Hash className="h-4 w-4" /> Site code</dt><dd className="text-right tabular-nums text-foreground">{location.siteCode}</dd></div>}
+                    <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Users className="h-4 w-4" /> Site Contact Person</dt><dd className="min-w-0 truncate text-right text-foreground">{location.manager || '—'}</dd></div>
+                    {location.siteCode && <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Hash className="h-4 w-4" /> Site Code</dt><dd className="text-right tabular-nums text-foreground">{location.siteCode}</dd></div>}
                   </dl>
                 </CardContent>
               </Card>
@@ -283,7 +283,7 @@ function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
         />
       </div>
-      <div className="space-y-2"><label className="text-sm font-medium">Site code</label><Input required placeholder="MUM-01" value={formData.siteCode} onChange={e=>setFormData({...formData,siteCode:e.target.value.toUpperCase()})}/></div>
+      <div className="space-y-2"><label className="text-sm font-medium">Site Code</label><Input required placeholder="MUM-01" value={formData.siteCode} onChange={e=>setFormData({...formData,siteCode:e.target.value.toUpperCase()})}/></div>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2"><label className="text-sm font-medium">Country</label><SearchableSelect value={formData.country||''} options={countries.map(country=>({value:country.name,label:country.name,keywords:country.isoCode}))} onChange={country=>setFormData({...formData,country,state:'',city:''})} placeholder="Select country" searchPlaceholder="Type country name..."/></div>
@@ -321,7 +321,7 @@ function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
         </div>
       </div>
       <div className="space-y-2">
-        <label className="text-sm font-medium">Site contact person</label>
+        <label className="text-sm font-medium">Site Contact Person</label>
         <Input
           required
           value={formData.manager}

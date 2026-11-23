@@ -11,8 +11,8 @@ import { getCollection, upsertIntoCollection } from '@/lib/db';
 import { stockHolderName, type Holder } from '@/lib/holders';
 
 /** The template header row. Do not rename or reorder: clients' files depend on it. */
-export const EMPLOYEE_TEMPLATE_HEADERS = ['Sr.No.', 'Code', 'Employee Name', 'Site', 'Department'] as const;
-const REQUIRED = ['Code', 'Employee Name', 'Site', 'Department'] as const;
+export const EMPLOYEE_TEMPLATE_HEADERS = ['Sr.No.', 'Employee Code', 'Employee Name', 'Site', 'Department'] as const;
+const REQUIRED = ['Employee Code', 'Employee Name', 'Site', 'Department'] as const;
 const SAMPLE_PREFIX = 'SAMPLE-';
 const MAX_ROWS = 5000;
 const CHUNK = 100;
@@ -39,12 +39,12 @@ export function downloadEmployeeTemplate() {
     [''],
     ['Column', 'What to enter', 'Required'],
     ['Sr.No.', 'Row number. Optional; not used.', 'No'],
-    ['Code', 'The employee ID or code. It must be UNIQUE: no two employees can share a code (names and departments can repeat). An existing code is updated, not duplicated.', 'Yes'],
+    ['Employee Code', 'The employee ID or code. It must be UNIQUE: no two employees can share an Employee Code (names and departments can repeat). An existing Employee Code is updated, not duplicated.', 'Yes'],
     ['Employee Name', 'Full name.', 'Yes'],
     ['Site', 'Work location. Use the same name as the site in AssetFlow. A site that does not exist yet can be created during import.', 'Yes'],
     ['Department', 'Department at that site. A new department is created during import.', 'Yes'],
     [''],
-    [`Rows whose Code starts with "${SAMPLE_PREFIX}" are samples and are skipped: delete or replace them.`],
+    [`Rows whose Employee Code starts with "${SAMPLE_PREFIX}" are samples and are skipped: delete or replace them.`],
     ['Rows with a missing value or a repeated Code are not imported. You get a list of them to fix and import again.'],
     ['Only the Super Admin can import. You can review everything before it is saved.'],
   ]);
@@ -102,10 +102,11 @@ export async function planEmployeeImport(file: File): Promise<EmployeePlan> {
 
   const plan: EmployeePlan = { fileName: file.name, missingHeaders: [], rows: [], newSites: [], newDepartments: [], tooManyRows: false };
   const headerRow = (grid[0] ?? []).map(norm);
-  const col = (name: string) => headerRow.findIndex(h => h.toUpperCase() === name.toUpperCase());
+  // Files made with the older template call this column just "Code": still accepted.
+  const col = (name: string) => headerRow.findIndex(h => h.toUpperCase() === name.toUpperCase() || (name === 'Employee Code' && h.toUpperCase() === 'CODE'));
   plan.missingHeaders = REQUIRED.filter(h => col(h) < 0);
   if (plan.missingHeaders.length) return plan;
-  const [cSr, cCode, cName, cSite, cDept] = [col('Sr.No.'), col('Code'), col('Employee Name'), col('Site'), col('Department')];
+  const [cSr, cCode, cName, cSite, cDept] = [col('Sr.No.'), col('Employee Code'), col('Employee Name'), col('Site'), col('Department')];
 
   const users = getCollection<User>('users');
   const sites = getCollection<Location>('locations');
@@ -127,7 +128,7 @@ export async function planEmployeeImport(file: File): Promise<EmployeePlan> {
       line, srNo: cSr >= 0 ? norm(r[cSr]) : '', code: norm(r[cCode]), name: norm(r[cName]), site: norm(r[cSite]), department: norm(r[cDept]),
       action: 'new', problems: [],
     };
-    if (!row.code) row.problems.push('Code is empty');
+    if (!row.code) row.problems.push('Employee Code is empty');
     if (!row.name) row.problems.push('Employee Name is empty');
     if (!row.site) row.problems.push('Site is empty');
     if (!row.department) row.problems.push('Department is empty');
@@ -227,7 +228,6 @@ export async function applyEmployeeImport(plan: EmployeePlan, options: { createM
 
   for (const row of plan.rows) {
     if (row.action === 'error') { result.skipped++; continue; }
-    if (row.action === 'unchanged') continue;
     let site = findSite(sites, row.site);
     if (!site) {
       if (!options.createMissingSites) { result.skipped++; continue; }
@@ -239,6 +239,8 @@ export async function applyEmployeeImport(plan: EmployeePlan, options: { createM
       const dept = { id: crypto.randomUUID(), name: row.department, siteId: site.id };
       departments.push(dept); newDepartments.push(dept); result.departmentsCreated++;
     }
+    // An employee who is already there is left alone, but the department must still exist at the site.
+    if (row.action === 'unchanged') continue;
     const existing = byEmployeeId.get(key(row.code));
     if (existing) {
       out.push({ ...existing, employeeId: row.code, name: row.name, department: row.department, siteId: site.id });

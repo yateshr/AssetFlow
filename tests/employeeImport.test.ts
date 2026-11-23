@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 describe('template headers', () => {
-  it('are fixed', () => expect(H).toEqual(['Sr.No.', 'Code', 'Employee Name', 'Site', 'Department']));
+  it('are fixed', () => expect(H).toEqual(['Sr.No.', 'Employee Code', 'Employee Name', 'Site', 'Department']));
   it('reports missing headers and imports nothing', async () => {
     const plan = await planEmployeeImport(file([['Code', 'Name', 'Site'], ['1', 'A', 'S']]));
     expect(plan.missingHeaders).toEqual(['Employee Name', 'Department']);
@@ -47,7 +47,7 @@ describe('planning', () => {
   it('flags empty cells, duplicate codes and sample rows', async () => {
     const plan = await planEmployeeImport(file([H, [1, '', 'No Code', 'Somnath', 'DISPATCH'], [2, '2', 'A', 'Somnath', 'DISPATCH'], [3, '2', 'B', 'Somnath', 'DISPATCH'], [4, 'SAMPLE-001', 'Sample', 'Somnath', 'DISPATCH'], [5, '5', 'No Dept', 'Somnath', '']]));
     const by = (line: number) => plan.rows.find(r => r.line === line)!;
-    expect(by(2).problems).toContain('Code is empty');
+    expect(by(2).problems).toContain('Employee Code is empty');
     // A repeated ID cannot be trusted, so every row that uses it is held back.
     expect(by(3).action).toBe('error');
     expect(by(3).problems.join()).toMatch(/Duplicate ID 2: also on row 4/);
@@ -98,6 +98,13 @@ describe('not imported list and log', () => {
   it('explains a header mismatch in the log', async () => {
     const plan = await planEmployeeImport(file([['Code', 'Name'], ['1', 'A']]));
     expect(importLog(plan).some(l => l.startsWith('[fail]') && /Missing: Employee Name, Site, Department/.test(l))).toBe(true);
+  });
+  it('still creates the department when the employee is already there', async () => {
+    seed('users', [{ id: 'U9', employeeId: '1001', name: 'Asha Rao', department: 'STORES', siteId: 'LOC-001', role: 'user', status: 'active', email: '', phone: '', joinDate: '' }]);
+    const plan = await planEmployeeImport(file([H, [1, '1001', 'Asha Rao', 'Somnath', 'STORES']]));
+    expect(plan.rows[0].action).toBe('unchanged');
+    await applyEmployeeImport(plan, { createMissingSites: false });
+    expect(rows('departments').some(d => d.name === 'STORES' && d.siteId === 'LOC-001')).toBe(true);
   });
   it('reports progress while saving', async () => {
     seed('users', []);
