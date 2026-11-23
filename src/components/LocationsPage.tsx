@@ -92,7 +92,7 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
         <div className="flex flex-wrap gap-2">
         <ExportMenu disabled={filteredLocations.length === 0} build={() => ({
           name: 'sites', sheet: 'Sites',
-          headers: ['Site Code', 'Name', 'Type', 'Address', 'Building', 'City', 'State', 'Country', 'Timezone', 'Site Contact', 'Capacity'],
+          headers: ['Site Code', 'Name', 'Type', 'Address', 'Building', 'City', 'State', 'Country', 'Timezone', 'Site Contact Person', 'Capacity'],
           rows: filteredLocations.map(l => [l.siteCode || '', l.name, masterLabel('location-types', l.type), l.address, l.building || '', l.city || '', l.state || '', l.country || '', l.timezone || '', l.manager, l.capacity]),
         })} />
         {canManage && <Button onClick={() => setShowCreateModal(true)}>
@@ -110,7 +110,7 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search by name, address, or contact..."
+                placeholder="Search by name, address, or contact person..."
                 className="pl-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -175,7 +175,7 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
 
                   <dl className="space-y-1.5 border-t pt-3 text-sm">
                     <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><UserRound className="h-4 w-4" /> IT Assets Manager</dt><dd className="min-w-0 truncate text-right font-medium text-foreground" title={holder?.name}>{holder?.name || <span className="font-normal text-amber-600 dark:text-amber-400">Not set up</span>}</dd></div>
-                    <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Users className="h-4 w-4" /> Site contact</dt><dd className="min-w-0 truncate text-right text-foreground">{location.manager || '—'}</dd></div>
+                    <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Users className="h-4 w-4" /> Site contact person</dt><dd className="min-w-0 truncate text-right text-foreground">{location.manager || '—'}</dd></div>
                     {location.siteCode && <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Hash className="h-4 w-4" /> Site code</dt><dd className="text-right tabular-nums text-foreground">{location.siteCode}</dd></div>}
                   </dl>
                 </CardContent>
@@ -321,8 +321,9 @@ function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
         </div>
       </div>
       <div className="space-y-2">
-        <label className="text-sm font-medium">Site contact <span className="font-normal text-muted-foreground">(optional)</span></label>
+        <label className="text-sm font-medium">Site contact person</label>
         <Input
+          required
           value={formData.manager}
           onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
         />
