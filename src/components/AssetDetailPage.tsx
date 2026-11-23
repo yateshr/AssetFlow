@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { makeModel } from '@/lib/utils';
 import { currentHolder, type Holder } from '@/lib/holders';
 import { Archive, ArrowLeft, CalendarClock, Edit, History as HistoryIcon, Package, Printer, ShieldCheck, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -164,7 +165,7 @@ function IdentityCard({ asset, site, ageYears, onLabel }: { asset: Asset; site?:
   const svg = useMemo(() => {
     try {
       return renderLabel(
-        { tag: asset.assetTag, lines: [{ key: 'model', text: `${asset.manufacturer} ${asset.model}`.trim() }, { key: 'site', text: site?.name || '' }], code: asset.assetTag },
+        { tag: asset.assetTag, lines: [{ key: 'model', text: makeModel(asset) }, { key: 'site', text: site?.name || '' }], code: asset.assetTag },
         { widthMm: 34, heightMm: 22, layout: 'qr', border: true },
       ).svg;
     } catch { return ''; }
@@ -415,7 +416,20 @@ function HistoryTab({ events, userName }: { events: AssetHistoryEvent[]; userNam
     if (last && last.label === label) last.items.push(e); else blocks.push({ label, items: [e] });
   }
   return (
-    <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_220px]">
+    <div className="space-y-5">
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 py-4 text-sm">
+          <label className="flex flex-col gap-1">Type
+            <select aria-label="History type" className="h-10 w-48 rounded-md border bg-background px-3" value={group} onChange={e => setGroup(e.target.value)}>
+              <option value="all">All history</option>
+              {HISTORY_GROUPS.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">From<Input type="date" className="w-40" value={from} onChange={e => setFrom(e.target.value)} /></label>
+          <label className="flex flex-col gap-1">To<Input type="date" className="w-40" value={to} onChange={e => setTo(e.target.value)} /></label>
+          {(group !== 'all' || from || to) && <Button variant="ghost" size="sm" onClick={() => { setGroup('all'); setFrom(''); setTo(''); }}>Clear filters</Button>}
+        </CardContent>
+      </Card>
       <Section title="Asset history">
         {blocks.length === 0 ? <Empty icon={HistoryIcon}>{events.length ? 'No events match these filters.' : 'No history recorded yet.'}</Empty> : (
           <div className="space-y-5">
@@ -430,18 +444,6 @@ function HistoryTab({ events, userName }: { events: AssetHistoryEvent[]; userNam
           </div>
         )}
       </Section>
-      <Card className="h-fit">
-        <CardHeader className="pb-2"><CardTitle className="text-base">Filter</CardTitle></CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <select aria-label="History type" className="h-10 w-full rounded-md border bg-background px-3" value={group} onChange={e => setGroup(e.target.value)}>
-            <option value="all">All history</option>
-            {HISTORY_GROUPS.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
-          </select>
-          <label className="block space-y-1">From<Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
-          <label className="block space-y-1">To<Input type="date" value={to} onChange={e => setTo(e.target.value)} /></label>
-          {(group !== 'all' || from || to) && <Button variant="ghost" size="sm" onClick={() => { setGroup('all'); setFrom(''); setTo(''); }}>Clear filters</Button>}
-        </CardContent>
-      </Card>
     </div>
   );
 }

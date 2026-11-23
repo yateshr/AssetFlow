@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { makeModel } from '@/lib/utils';
 import { CurrencyIcon } from '@/components/CurrencyIcon';
 import { Search, Package, Users, Truck, MapPin, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -32,7 +33,7 @@ export function GlobalSearch({ assets, users, vendors, locations, invoices, onNa
 
     assets.forEach(a => {
       if ([a.name, a.assetTag, a.serialNumber, a.manufacturer, a.model, a.status, a.siteId].some(v => v?.toLowerCase().includes(q))) {
-        add(`asset-${a.id}`, a.name, `${a.assetTag} • ${a.manufacturer} ${a.model}`, 'Asset', 'assets', Package);
+        add(`asset-${a.id}`, a.name, `${a.assetTag} • ${makeModel(a)}`, 'Asset', 'assets', Package);
       }
     });
     users.forEach(u => {

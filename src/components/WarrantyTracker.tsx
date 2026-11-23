@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { makeModel } from '@/lib/utils';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, HelpCircle, Search, ShieldCheck } from 'lucide-react';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Badge } from '@/components/ui/badge';
@@ -87,7 +88,7 @@ export function WarrantyTracker({ assetsList, onNavigate }: { assetsList: Asset[
     name: 'warranty-tracker', sheet: 'Warranty',
     headers: ['Asset Tag', 'Name', 'Type', 'Make & Model', 'Serial', 'Site', 'Status', 'Warranty Start', 'Warranty End', 'Days Remaining', 'Remaining'],
     rows: visible.map(({ asset: a, days, site }) => [
-      a.assetTag, a.name, a.type, `${a.manufacturer} ${a.model}`.trim(), a.serialNumber, site, a.status,
+      a.assetTag, a.name, a.type, makeModel(a), a.serialNumber, site, a.status,
       dmy(a.purchaseDate), dmy(a.warrantyExpiry), Number.isNaN(days) ? '' : days, remainingLabel(days),
     ]),
   });
@@ -150,7 +151,7 @@ export function WarrantyTracker({ assetsList, onNavigate }: { assetsList: Asset[
                   <TableRow key={a.id} className="cursor-pointer" onClick={() => onNavigate('assets')} title="Open Assets">
                     <TableCell>
                       <p className="font-mono text-sm font-semibold">{a.assetTag}</p>
-                      <p className="max-w-[320px] truncate text-xs text-muted-foreground">{a.name}{a.manufacturer || a.model ? ` · ${`${a.manufacturer} ${a.model}`.trim()}` : ''}</p>
+                      <p className="max-w-[320px] truncate text-xs text-muted-foreground">{a.name}{a.manufacturer || a.model ? ` · ${makeModel(a)}` : ''}</p>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{site || '—'}</TableCell>
                     <TableCell className="whitespace-nowrap text-sm tabular-nums">

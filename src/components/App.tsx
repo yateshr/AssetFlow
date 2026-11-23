@@ -208,7 +208,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
     {
       label: 'System',
       items: [
-        { id: 'settings', label: 'Settings', icon: Settings },
+        ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'settings' as Page, label: 'Settings', icon: Settings }] : []),
         ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'transfer-approvals' as Page, label: 'Approvals', icon: ArrowRightLeft }] : []),
         ...(['super_admin','admin'].includes(signedInUser.role) ? [{ id: 'data-tools' as Page, label: 'Data Management', icon: Database }] : []),
       ],
@@ -303,7 +303,7 @@ function AppShell({ currentUserId, currentUserProfile, onLogout, companies }: { 
           />
         );
       case 'locations':
-        return <LocationsPage sitesList={sitesList} onSitesChange={setSitesList} />;
+        return <LocationsPage sitesList={sitesList} onSitesChange={setSitesList} canManage={['super_admin','admin'].includes(signedInUser.role)} />;
       case 'vendors':
         return (
           <VendorsPage

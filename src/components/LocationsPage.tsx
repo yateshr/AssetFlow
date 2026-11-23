@@ -27,9 +27,11 @@ import {
 interface LocationsPageProps {
   sitesList: Location[];
   onSitesChange: (locations: Location[]) => void;
+  /** Super Admin only: add and delete sites. A site IT admin can still edit their own site. */
+  canManage?: boolean;
 }
 
-export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) {
+export function LocationsPage({ sitesList, onSitesChange, canManage = true }: LocationsPageProps) {
   const [locationTypes]=useCollection<MasterDataOption>('location-types');
   const [siteAreas,setSiteAreas]=useCollection<SiteArea>('site-areas');
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,10 +90,10 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
           headers: ['Site Code', 'Name', 'Type', 'Address', 'Building', 'City', 'State', 'Country', 'Timezone', 'Manager', 'Capacity'],
           rows: filteredLocations.map(l => [l.siteCode || '', l.name, masterLabel('location-types', l.type), l.address, l.building || '', l.city || '', l.state || '', l.country || '', l.timezone || '', l.manager, l.capacity]),
         })} />
-        <Button onClick={() => setShowCreateModal(true)}>
+        {canManage && <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Site
-        </Button>
+        </Button>}
         </div>
       </div>
 
@@ -151,9 +153,9 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon-sm" title="Manage building, floor, room and rack hierarchy" onClick={()=>setSpacesLocation(location)}><Network className="h-4 w-4"/></Button>
-                      <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(location.id)}>
+                      {canManage && <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(location.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      </Button>}
                     </div>
                   </div>
                   
@@ -199,7 +201,7 @@ export function LocationsPage({ sitesList, onSitesChange }: LocationsPageProps) 
               {editingLocation ? 'Update site information below.' : 'Fill in the details to add a new site.'}
             </DialogDescription>
           </DialogHeader>
-          {editingLocation && <HolderEditor siteId={editingLocation.id} siteName={editingLocation.name} assets={getCollection<Asset>('assets')} />}
+          {editingLocation && canManage && <HolderEditor siteId={editingLocation.id} siteName={editingLocation.name} assets={getCollection<Asset>('assets')} />}
           <LocationForm 
             location={editingLocation}
             locationTypes={locationTypes}

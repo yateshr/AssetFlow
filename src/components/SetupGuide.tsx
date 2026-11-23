@@ -43,7 +43,10 @@ export function SetupGuide({ onNavigate, assetCount, users }: { onNavigate: (pag
     { key: 'labels', title: 'Print asset labels', help: 'Open an asset and print a QR label for your sticker size.', done: (() => { try { return kv.getItem('assetflow-label-settings') !== null; } catch { return false; } })(), go: () => onNavigate('assets'), action: 'Open assets' },
   ];
   const done = steps.filter(s => s.done).length;
-  if (hidden || done === steps.length) return null;
+  if (done === steps.length) return null;
+  if (hidden) {
+    return <button type="button" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" onClick={() => { setHidden(false); try { kv.removeItem(HIDDEN_KEY); } catch { /* ignore */ } }}>Show the setup guide ({done} of {steps.length} steps done)</button>;
+  }
   const next = steps.find(s => !s.done);
 
   return (

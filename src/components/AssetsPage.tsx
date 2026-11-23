@@ -213,6 +213,13 @@ export function AssetsPage({
   // The detail page always shows the current version of the asset (edits, archive).
   const liveViewing = viewingAsset ? (assets.find(a => a.id === viewingAsset.id) ?? archivedAssets.find(a => a.id === viewingAsset.id) ?? viewingAsset) : null;
 
+  // Opening an asset starts at the top of the page, not where the list was scrolled to.
+  useEffect(() => {
+    if (!liveViewing?.id) return;
+    document.querySelector('main')?.scrollTo?.({ top: 0 });
+    window.scrollTo?.({ top: 0 });
+  }, [liveViewing?.id]);
+
   const handleDelete = async (id: string): Promise<boolean> => {
     const asset = assets.find(a => a.id === id);
     if (!asset) return false;
@@ -339,7 +346,7 @@ export function AssetsPage({
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Assets</h1>
           <p className="text-muted-foreground">Manage your IT assets and inventory</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <ExportMenu build={buildExport} disabled={filteredAssets.length === 0} />
           <Button variant="outline" onClick={() => setLabelAssets(filteredAssets)} disabled={filteredAssets.length === 0}>
             <Printer className="h-4 w-4 mr-2" />
@@ -361,7 +368,7 @@ export function AssetsPage({
           )}
           {canCreateInvoiceAssets && <Button variant="outline" onClick={() => setShowBatchModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Batch
+            {isSuperAdmin ? 'Add Batch' : 'Add from invoice'}
           </Button>}
         </div>
       </div>

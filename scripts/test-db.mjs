@@ -200,7 +200,7 @@ test("a site admin cannot delete other plants' assets, invoices or sites", async
   await asSite(q, f);
   await rejects(q(`select assetflow_delete_company_records($1,'assets',$2)`, [f.A, ['AST-A2']]), /assigned site/i);
   await rejects(q(`select assetflow_delete_company_records($1,'invoices',$2)`, [f.A, ['INV-A2']]), /assigned site/i);
-  await rejects(q(`select assetflow_delete_company_records($1,'locations',$2)`, [f.A, ['SITE-A2']]), /assigned site/i);
+  await rejects(q(`select assetflow_delete_company_records($1,'locations',$2)`, [f.A, ['SITE-A2']]), /assigned site|company-wide/i);
   for (const [table, id] of [['assets', 'AST-A2'], ['invoices', 'INV-A2'], ['locations', 'SITE-A2']]) assert(await existsRow(q, table, f, id), `${table} ${id} must still exist`);
 });
 
@@ -367,6 +367,14 @@ test('an employee ID can belong to only one employee in a company', async (q, f)
   await rejects(q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E2', '1001', 'Someone Else')]), /duplicate|unique/i);
   await rejects(q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E3', '1001', 'Asha Rao')]), /duplicate|unique/i); // same name, same ID
   await q(`select assetflow_upsert_company_records($1,'users',$2::jsonb)`, [f.A, emp('E4', '1002', 'Asha Rao')]); // same name, different ID is fine
+});
+
+test('a site admin cannot delete even their own site', async (q, f) => {
+  await asSite(q, f);
+  await rejects(q(`select assetflow_delete_company_records($1,'locations',$2)`, [f.A, ['SITE-A1']]), /Only company-wide administrators/i);
+  assert(await existsRow(q, 'locations', f, 'SITE-A1'), 'the site must still exist');
+  await as(q, f.userA, f.emailA); // company-wide manager may
+  await q(`select assetflow_delete_company_records($1,'locations',$2)`, [f.A, ['SITE-A2']]);
 });
 
 // ----------------------------------------------------------------- runner
