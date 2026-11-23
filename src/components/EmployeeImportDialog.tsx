@@ -19,6 +19,7 @@ const TONE: Record<RowAction, string> = {
 };
 const LABEL: Record<RowAction, string> = { new: 'New', update: 'Update', unchanged: 'No change', error: 'Not imported' };
 const TILE: Record<RowAction, string> = { new: 'New: will be added', update: 'Changed: will be updated', unchanged: 'Already there: skipped', error: 'Problems: not imported' };
+const SHORT: Record<RowAction, string> = { new: 'New', update: 'Changed', unchanged: 'Already there', error: 'Problems' };
 const PREVIEW_ROWS = 200;
 
 /** Dark console with green text, one line at a time. */
@@ -117,28 +118,34 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) close(); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden sm:max-w-3xl [&>*]:min-w-0">
-        <DialogHeader>
+      <DialogContent className="flex h-[min(46rem,90vh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl sm:p-0 [&>*]:min-w-0">
+        <DialogHeader className="border-b px-5 py-4">
           <DialogTitle>Import employees</DialogTitle>
-          <DialogDescription>Download the template, fill in one row per employee, then upload it. You can review everything before anything is saved. Each employee ID (Code) must be unique.</DialogDescription>
+          <DialogDescription>Upload the filled template. Nothing is saved until you press Import. Each employee ID must be unique.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
-          <FileSpreadsheet className="h-5 w-5 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Template columns</p>
-            <p className="text-muted-foreground">{EMPLOYEE_TEMPLATE_HEADERS.join('  ·  ')}</p>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+        <input ref={input} className="sr-only" type="file" accept=".xlsx,.xls" disabled={reading || busy} onChange={e => void choose(e.target.files?.[0])} />
+        {plan ? (
+          <div className="flex shrink-0 items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+            <FileSpreadsheet className="h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 truncate font-medium" title={plan.fileName}>{plan.fileName}</span>
+            <Button variant="ghost" size="sm" disabled={reading || busy} onClick={() => input.current?.click()}><Upload className="h-4 w-4" /> Change file</Button>
+            <Button variant="ghost" size="sm" onClick={downloadEmployeeTemplate}><Download className="h-4 w-4" /> Template</Button>
           </div>
-          <Button variant="outline" size="sm" onClick={downloadEmployeeTemplate}><Download className="h-4 w-4" /> Download template</Button>
-        </div>
-
-        {/* Upload */}
-        <label className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/30 bg-primary/[0.03] p-6 text-center transition-colors ${reading || busy ? 'cursor-wait' : 'cursor-pointer hover:bg-primary/[0.06]'}`}>
-          <Upload className={`h-6 w-6 text-primary ${reading ? 'animate-bounce' : ''}`} />
-          <span className="mt-2 font-medium">{reading ? 'Reading the file…' : busy ? 'Importing…' : plan ? `Chosen: ${plan.fileName}` : 'Choose your filled template (.xlsx)'}</span>
-          {!reading && !busy && plan && <span className="text-xs text-muted-foreground">Click to choose a different file</span>}
-          <input ref={input} className="sr-only" type="file" accept=".xlsx,.xls" disabled={reading || busy} onChange={e => void choose(e.target.files?.[0])} />
-        </label>
+        ) : (
+          <>
+            <button type="button" disabled={reading || busy} onClick={() => input.current?.click()}
+              className={`flex shrink-0 flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/30 bg-primary/[0.03] p-6 text-center transition-colors ${reading || busy ? 'cursor-wait' : 'hover:bg-primary/[0.06]'}`}>
+              <Upload className={`h-6 w-6 text-primary ${reading ? 'animate-bounce' : ''}`} />
+              <span className="mt-2 text-sm font-medium">{reading ? 'Reading the file…' : busy ? 'Importing…' : 'Choose your filled template (.xlsx)'}</span>
+            </button>
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>Columns: {EMPLOYEE_TEMPLATE_HEADERS.join(' · ')}</span>
+              <Button variant="outline" size="sm" onClick={downloadEmployeeTemplate}><Download className="h-4 w-4" /> Download template</Button>
+            </div>
+          </>
+        )}
         {reading && <Progress label="Reading the file" />}
         {progress && <Progress value={progress.value} label={progress.label} />}
 
@@ -158,7 +165,7 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
         )}
 
         {plan && plan.missingHeaders.length === 0 && (
-          <div className="min-w-0 space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
             {result && (
               <div className="flex items-start gap-3 rounded-lg border border-chart-2/30 bg-chart-2/5 p-3 text-sm">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-chart-2" />
@@ -171,31 +178,31 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
 
             {!result && (
               <>
-                <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                  <b>{plan.rows.length} row{plan.rows.length === 1 ? '' : 's'} in this file.</b>{' '}
-                  {(counts.new || 0) > 0 ? <>{counts.new} new employee{counts.new === 1 ? '' : 's'} will be added. </> : <>No new employees. </>}
-                  {(counts.unchanged || 0) > 0 && <>{counts.unchanged} already in the system with the same details {counts.unchanged === 1 ? 'is' : 'are'} skipped. </>}
-                  {(counts.update || 0) > 0 && <>{counts.update} existing employee{counts.update === 1 ? '' : 's'} will be updated. </>}
-                  {(counts.error || 0) > 0 && <span className="text-destructive">{counts.error} row{counts.error === 1 ? ' has' : 's have'} problems and will not be imported.</span>}
-                </div>
+                <p className="shrink-0 text-sm text-muted-foreground">
+                  <b className="text-foreground">{plan.rows.length} row{plan.rows.length === 1 ? '' : 's'}.</b>{' '}
+                  {(counts.new || 0) > 0 ? <>{counts.new} will be added. </> : <>Nothing new to add. </>}
+                  {(counts.unchanged || 0) > 0 && <>{counts.unchanged} already exist with the same details and are skipped. </>}
+                  {(counts.update || 0) > 0 && <>{counts.update} existing will be updated. </>}
+                  {(counts.error || 0) > 0 && <span className="text-destructive">{counts.error} cannot be imported.</span>}
+                </p>
 
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="flex shrink-0 flex-wrap gap-2" role="tablist" aria-label="Show rows">
                   {(['new', 'update', 'unchanged', 'error'] as RowAction[]).map(a => {
                     const Icon = { new: UserPlus, update: RefreshCw, unchanged: UserCheck, error: AlertTriangle }[a];
                     const on = shownView === a;
                     return (
-                      <button key={a} type="button" onClick={() => setView(a)} aria-pressed={on} disabled={!counts[a]}
-                        className={`rounded-xl border p-3 text-left transition-all disabled:opacity-40 ${on ? 'ring-2 ring-primary shadow-sm' : 'hover:border-primary/40 hover:shadow-sm'} ${TONE[a]}`}>
-                        <Icon className="h-4 w-4" />
-                        <p className="mt-1 text-2xl font-semibold tabular-nums leading-none">{counts[a] || 0}</p>
-                        <p className="mt-1 text-xs font-medium">{TILE[a]}</p>
+                      <button key={a} type="button" role="tab" aria-selected={on} onClick={() => setView(a)} disabled={!counts[a]} title={TILE[a]}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-all disabled:opacity-40 ${on ? 'ring-2 ring-primary' : 'hover:border-primary/40'} ${TONE[a]}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="font-semibold tabular-nums">{counts[a] || 0}</span>
+                        <span className="text-xs font-medium">{SHORT[a]}</span>
                       </button>
                     );
                   })}
                 </div>
 
                 {plan.newSites.length > 0 && (
-                  <label className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+                  <label className="flex shrink-0 items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
                     <input type="checkbox" className="mt-1" checked={createSites} disabled={busy} onChange={e => setCreateSites(e.target.checked)} />
                     <span>
                       <b>Create {plan.newSites.length} site{plan.newSites.length === 1 ? '' : 's'} that {plan.newSites.length === 1 ? 'does' : 'do'} not exist yet:</b> {plan.newSites.join(', ')}
@@ -203,16 +210,16 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
                     </span>
                   </label>
                 )}
-                {plan.newDepartments.length > 0 && <p className="text-xs text-muted-foreground">{plan.newDepartments.length} new department{plan.newDepartments.length === 1 ? '' : 's'} will also be created: {plan.newDepartments.slice(0, 6).join(', ')}{plan.newDepartments.length > 6 ? '…' : ''}</p>}
+                {plan.newDepartments.length > 0 && <p className="shrink-0 text-xs text-muted-foreground">{plan.newDepartments.length} new department{plan.newDepartments.length === 1 ? '' : 's'} will also be created: {[...new Set(plan.newDepartments.map(d => d.name))].slice(0, 6).join(', ')}{new Set(plan.newDepartments.map(d => d.name)).size > 6 ? '…' : ''}</p>}
 
                 {plan.rows.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-h-[12rem] flex-1 flex-col gap-2">
+                    <div className="flex shrink-0 items-center justify-between gap-2">
                       <p className="text-sm font-medium">{TILE[shownView]} <span className="text-muted-foreground">({shownRows.length})</span></p>
                       <Input className="h-8 max-w-[14rem]" value={q} onChange={e => setQ(e.target.value)} placeholder="Search code, name…" aria-label="Search rows" />
                     </div>
-                    <div className="max-h-72 overflow-auto rounded-xl border">
-                      <table className="w-full text-sm">
+                    <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+                      <table className="w-full text-[13px]">
                         <thead className="sticky top-0 z-10 bg-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                           <tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Site</th><th className="px-3 py-2">Department</th><th className="px-3 py-2">Result</th></tr>
                         </thead>
@@ -220,8 +227,8 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
                           {shownRows.slice(0, PREVIEW_ROWS).map(r => (
                             <tr key={r.line} className={r.action === 'error' ? 'bg-destructive/5' : 'hover:bg-muted/40'}>
                               <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{r.line}</td>
-                              <td className="px-3 py-1.5 font-mono text-xs">{r.code || '—'}</td>
-                              <td className="px-3 py-1.5 font-medium">{r.name || '—'}</td>
+                              <td className="whitespace-nowrap px-3 py-1.5 tabular-nums">{r.code || '—'}</td>
+                              <td className="px-3 py-1.5">{r.name || '—'}</td>
                               <td className="px-3 py-1.5">{r.site || '—'}</td>
                               <td className="px-3 py-1.5">{r.department || '—'}</td>
                               <td className="px-3 py-1.5">
@@ -277,7 +284,9 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
           </div>
         )}
 
-        <DialogFooter>
+        </div>
+
+        <DialogFooter className="border-t px-5 py-3">
           {result ? (
             <>
               <Button variant="outline" onClick={reset}>Import another file</Button>
