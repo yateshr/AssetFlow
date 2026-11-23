@@ -109,7 +109,7 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) close(); }}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden sm:max-w-3xl [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle>Import employees</DialogTitle>
           <DialogDescription>Download the template, fill in one row per employee, then upload it. You can review everything before anything is saved. Each employee ID (Code) must be unique.</DialogDescription>
@@ -150,7 +150,7 @@ export function EmployeeImportDialog({ open, onClose }: { open: boolean; onClose
         )}
 
         {plan && plan.missingHeaders.length === 0 && (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {result && (
               <div className="flex items-start gap-3 rounded-lg border border-chart-2/30 bg-chart-2/5 p-3 text-sm">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-chart-2" />

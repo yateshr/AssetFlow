@@ -96,7 +96,7 @@ export function StockTab({ userName }: { userName: string }) {
       }} />
 
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[85vh] sm:max-w-3xl overflow-y-auto">
           <DialogHeader><DialogTitle>Stock history</DialogTitle><DialogDescription>Every receipt, issue and adjustment.</DialogDescription></DialogHeader>
           {movements.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No stock movements yet. Use + and − on an item.</p> : (
             <Table>

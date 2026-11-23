@@ -77,7 +77,7 @@ export function InfrastructureTab() {
       </Card>
 
       <Dialog open={!!form} onOpenChange={o => { if (!o) setForm(null); }}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] sm:max-w-2xl overflow-y-auto">
           <form onSubmit={e => { e.preventDefault(); save(); }}>
             <DialogHeader><DialogTitle>{form?.id ? 'Edit device' : 'Add device'}</DialogTitle><DialogDescription>Network and infrastructure equipment.</DialogDescription></DialogHeader>
             {form && (

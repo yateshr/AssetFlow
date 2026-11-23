@@ -58,7 +58,7 @@ export function AssetRequestDialog({ open, onClose, sites, categories, defaultSi
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="sm:max-w-xl">
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>Request assets without an invoice</DialogTitle>

@@ -176,7 +176,7 @@ export function InvoicesPage({
       {viewing&&<InvoiceDetails invoice={viewing} vendorName={vendorName(viewing.vendorId)} sitesList={sitesList} assetsList={assetsList} history={history} onClose={()=>setViewing(null)} onReceive={()=>{setViewing(null);toast.info('Create received assets from Assets → Add Batch. This preserves Site Series tags, serial numbers, and invoice-line limits.')}} onPayment={()=>{setViewing(null);setPaymentInvoice(viewing)}}/>}
     </DialogContent></Dialog>
 
-    <Dialog open={!!paymentInvoice} onOpenChange={open=>!open&&setPaymentInvoice(null)}><DialogContent className="max-w-md">
+    <Dialog open={!!paymentInvoice} onOpenChange={open=>!open&&setPaymentInvoice(null)}><DialogContent className="sm:max-w-md">
       <DialogHeader><DialogTitle>Record Payment</DialogTitle><DialogDescription>{paymentInvoice?.invoiceNumber}</DialogDescription></DialogHeader>
       {paymentInvoice&&<PaymentForm invoice={paymentInvoice} onSubmit={handlePayment} onCancel={()=>setPaymentInvoice(null)}/>}
     </DialogContent></Dialog>
@@ -390,7 +390,7 @@ function InvoiceForm({invoice,invoices,vendors,onVendorsChange,onSubmit,onCancel
     </div>
 
     <Dialog open={showCreateVendor} onOpenChange={setShowCreateVendor}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create New Vendor</DialogTitle>
           <DialogDescription>

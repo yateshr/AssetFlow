@@ -288,7 +288,7 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
           setEditingCall(null);
         }
       }}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] sm:max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingCall ? 'Edit Call Log' : 'New Call Log'}</DialogTitle>
             <DialogDescription>Record the call details, assignment, and resolution status.</DialogDescription>
@@ -324,7 +324,7 @@ export function CallLogsPage({ usersList, departmentsList, assetsList, callLogs,
       </Dialog>
 
       <Dialog open={!!viewingCall} onOpenChange={(open) => !open && setViewingCall(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Call Details</DialogTitle>
             <DialogDescription>{viewingCall?.id}</DialogDescription>
