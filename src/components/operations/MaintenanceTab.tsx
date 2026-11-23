@@ -48,7 +48,7 @@ export function MaintenanceTab({ assets, onAssetsChange, history, onHistoryChang
     const asset = assets.find(a => a.id === record.assetId);
     setRecords(prev => prev.map(r => (r.id === record.id ? { ...r, status: 'completed', cost } : r)));
     if (asset) {
-      const restored = asset.assignedTo ? 'assigned' : 'available';
+      const restored = asset.assignedTo ? 'assigned' : asset.deployedAt ? 'deployed' : 'available';
       onAssetsChange(assets.map(a => (a.id === asset.id ? { ...a, status: restored } : a)));
       onHistoryChange([...history, { id: newId('H'), assetId: asset.id, timestamp: new Date().toISOString(), action: 'Repair Completed', performedBy: currentUser.id, from: 'maintenance', to: restored, reason: 'Repair completed', notes: record.description, cost }]);
     }
@@ -92,7 +92,7 @@ export function MaintenanceTab({ assets, onAssetsChange, history, onHistoryChang
                   return (
                     <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
                       <div className="min-w-0"><p className="font-medium"><span className="font-mono text-sm">{a.assetTag}</span> · {a.name}</p>
-                        <p className="text-xs text-muted-foreground">{a.status === 'maintenance' ? 'Under repair' : a.status}{Number.isNaN(days) ? '' : days < 0 ? ' · warranty expired' : ` · warranty ${days} days left`}</p></div>
+                        <p className="text-xs text-muted-foreground">{a.status === 'maintenance' ? 'Under repair' : a.status === 'deployed' && a.deployedAt ? `deployed at ${a.deployedAt}` : a.status}{Number.isNaN(days) ? '' : days < 0 ? ' · warranty expired' : ` · warranty ${days} days left`}</p></div>
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => setOpening(a)}>{busy ? 'Repair open' : 'Open repair'}</Button>
                     </li>
                   );

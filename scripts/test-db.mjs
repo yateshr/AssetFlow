@@ -389,8 +389,6 @@ test('a site has only one active IT Assets Manager (stock holder)', async (q, f)
   const save = (id, kind, active = true) => q(`select assetflow_upsert_company_records($1,'holders',$2::jsonb)`, [f.A, JSON.stringify([{ id, siteId: 'SITE-A1', kind, name: id, active }])]);
   await save('S-1', 'stock');
   await rejects(save('S-2', 'stock'), /duplicate|unique/i);
-  await save('SHARED-1', 'shared');
-  await save('SHARED-2', 'shared'); // other kinds are unlimited
   await save('S-1', 'stock', false); // archive the manager...
   await save('S-2', 'stock'); // ...then another can take over
   await rejects(save('S-1', 'stock', true), /duplicate|unique/i); // but the old one cannot come back while the new one is active

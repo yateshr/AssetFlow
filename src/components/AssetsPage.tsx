@@ -9,7 +9,8 @@ import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
 import { ExportMenu } from '@/components/ExportMenu';
 import { StockPanel } from '@/components/StockPanel';
-import { ChangeHolderDialog } from '@/components/ChangeHolderDialog';
+import { DeployDialog } from '@/components/DeployDialog';
+import { deployAsset, deployedPlaces, returnToStock } from '@/lib/stock';
 import { useCollection } from '@/lib/db';
 const LabelPrintDialog = lazy(() => import('./LabelPrintDialog').then(m => ({ default: m.LabelPrintDialog })));
 import type { MasterDataOption } from '@/data/masterData';
@@ -131,7 +132,7 @@ export function AssetsPage({
   const [historyAsset, setHistoryAsset] = useState<Asset | null>(null);
   const [transferringAsset,setTransferringAsset]=useState<Asset|null>(null);
   const [movingAsset,setMovingAsset]=useState<Asset|null>(null);
-  const [holderAsset,setHolderAsset]=useState<Asset|null>(null);
+  const [deployingAsset,setDeployingAsset]=useState<Asset|null>(null);
   const [reversingReceipt,setReversingReceipt]=useState<Asset|null>(null);
   const [assetTagRules,setAssetTagRules]=useState<AssetTagSiteSeries[]>([]);
   const isSuperAdmin=['super_admin','admin'].includes(currentUser.role);
@@ -157,7 +158,7 @@ export function AssetsPage({
     const q = searchQuery.toLowerCase();
     const assignedName = asset.assignedTo ? usersList.find(u => u.id === asset.assignedTo)?.name || '' : currentHolder(asset, holders)?.name || '';
     const searchTerms = q.split(/\s+/).filter(Boolean);
-    const searchHaystack = [asset.name, asset.assetTag, asset.serialNumber, asset.manufacturer, asset.model, asset.siteId, assignedName, asset.status, asset.type]
+    const searchHaystack = [asset.name, asset.assetTag, asset.serialNumber, asset.manufacturer, asset.model, asset.siteId, assignedName, asset.deployedAt || '', asset.status, asset.type]
       .join(' ').toLowerCase();
     const matchesSearch = searchTerms.length === 0 || searchTerms.every(term => searchHaystack.includes(term));
     const matchesStatus = statusFilter === 'all' || asset.status === statusFilter;
@@ -205,12 +206,20 @@ export function AssetsPage({
     const variants = {
       available: 'bg-chart-2/10 text-chart-2 border-chart-2/20',
       assigned: 'bg-primary/10 text-primary border-primary/20',
+      deployed: 'bg-chart-4/10 text-chart-4 border-chart-4/20',
       maintenance: 'bg-chart-5/10 text-chart-5 border-chart-5/20',
       retired: 'bg-muted text-muted-foreground border-muted',
       disposed: 'bg-muted text-muted-foreground border-muted',
       lost: 'bg-destructive/10 text-destructive border-destructive/20'
     };
     return variants[status];
+  };
+
+  const returnAssetToStock = (asset: Asset) => {
+    const r = returnToStock(asset, currentUser.id);
+    onAssetsChange(assets.map(a => (a.id === asset.id ? r.asset : a)));
+    onHistoryChange([...history, r.history]);
+    toast.success(`${asset.assetTag} is back in stock`);
   };
 
   // The detail page always shows the current version of the asset (edits, archive).
@@ -307,9 +316,9 @@ export function AssetsPage({
   const buildExport = () => ({
     name: 'assets',
     sheet: 'Assets',
-    headers: ['Asset Tag', 'Name', 'Type', 'Manufacturer', 'Model', 'Serial Number', 'Status', 'Condition', 'Site', 'Assigned To', 'Purchase Date', 'Purchase Price', 'Warranty Expiry', 'AMC Provider', 'AMC Expiry', 'Insurance Provider', 'Insurance Expiry', 'Notes'],
+    headers: ['Asset Tag', 'Name', 'Type', 'Manufacturer', 'Model', 'Serial Number', 'Status', 'Where installed', 'Condition', 'Site', 'Assigned To', 'Purchase Date', 'Purchase Price', 'Warranty Expiry', 'AMC Provider', 'AMC Expiry', 'Insurance Provider', 'Insurance Expiry', 'Notes'],
     rows: filteredAssets.map(a => [
-      a.assetTag, a.name, masterLabel('asset-categories', a.type), a.manufacturer, a.model, a.serialNumber, a.status, a.condition || '',
+      a.assetTag, a.name, masterLabel('asset-categories', a.type), a.manufacturer, a.model, a.serialNumber, a.status, a.deployedAt || '', a.condition || '',
       sitesList.find(l => l.id === a.siteId)?.name || a.siteId,
       a.assignedTo ? usersList.find(u => u.id === a.assignedTo)?.name || a.assignedTo : '',
       a.purchaseDate, a.purchasePrice, a.warrantyExpiry, a.amcProvider || '', a.amcExpiry || '', a.insuranceProvider || '', a.insuranceExpiry || '', a.notes || '',
@@ -336,7 +345,8 @@ export function AssetsPage({
               onHistory={() => setHistoryAsset(liveViewing)}
               onEdit={() => setEditingAsset(liveViewing)}
               onMove={() => setMovingAsset(liveViewing)}
-              onChangeHolder={liveViewing.assignedTo ? undefined : () => setHolderAsset(liveViewing)}
+              onDeploy={['available', 'deployed'].includes(liveViewing.status) ? () => setDeployingAsset(liveViewing) : undefined}
+              onReturnToStock={liveViewing.status === 'deployed' ? () => returnAssetToStock(liveViewing) : undefined}
               onTransfer={() => setTransferringAsset(liveViewing)}
               onLabel={() => setLabelAssets([liveViewing])}
               onArchive={() => { void handleDelete(liveViewing.id).then(done => { if (done) setViewingAsset(null); }); }}
@@ -428,6 +438,7 @@ export function AssetsPage({
               <option value="all">All Status</option>
               <option value="available">Available</option>
               <option value="assigned">Assigned</option>
+              <option value="deployed">Deployed</option>
               <option value="maintenance">Maintenance</option>
               <option value="retired">Retired</option>
             </select>
@@ -516,14 +527,14 @@ export function AssetsPage({
                     <p className="truncate font-semibold">{asset.name}</p>
                     <p className="mt-0.5 font-mono text-xs text-muted-foreground">{asset.assetTag} · {asset.manufacturer} {asset.model}</p>
                   </button>
-                  <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onChangeHolder={asset.assignedTo?undefined:()=>setHolderAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
+                  <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onDeploy={['available','deployed'].includes(asset.status)?()=>setDeployingAsset(asset):undefined} onReturnToStock={asset.status==='deployed'?()=>returnAssetToStock(asset):undefined} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Badge variant="outline" className={getStatusBadge(asset.status)}>{asset.status === 'maintenance' ? 'Under Repair' : asset.status}</Badge>
+                  <Badge variant="outline" className={getStatusBadge(asset.status)}>{asset.status === 'maintenance' ? 'Under Repair' : asset.status === 'deployed' && asset.deployedAt ? `Deployed · ${asset.deployedAt}` : asset.status}</Badge>
                   {days !== null && <Badge variant={days < 0 ? 'destructive' : 'outline'}>{days < 0 ? 'Warranty expired' : `${days}d warranty`}</Badge>}
                 </div>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <div><dt className="text-xs text-muted-foreground">Assigned to</dt><dd className="mt-0.5 truncate">{assignedUser?.name || currentHolder(asset, holders)?.name || 'Unassigned'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">{asset.status === 'deployed' ? 'Installed at' : 'Assigned to'}</dt><dd className="mt-0.5 truncate">{asset.status === 'deployed' ? asset.deployedAt || '—' : assignedUser?.name || currentHolder(asset, holders)?.name || 'Unassigned'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Site</dt><dd className="mt-0.5 truncate">{location?.name || 'Not set'}</dd></div>
                 </dl>
               </CardContent>
@@ -595,12 +606,13 @@ export function AssetsPage({
                         {location?.name || '-'}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {assignedUser?.name || (() => { const h = currentHolder(asset, holders); return h ? <span className="italic" title="Held in stock, not assigned to an employee">{h.name}</span> : '-'; })()}
+                        {assignedUser?.name || (() => { const h = currentHolder(asset, holders); return h ? <span className="italic" title="Held by the site's IT Assets Manager, not assigned to an employee">{h.name}</span> : '-'; })()}
+                        {asset.status === 'deployed' && <span className="block text-xs not-italic text-muted-foreground">at {asset.deployedAt || '—'}</span>}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => setViewingAsset(asset)}><Eye className="mr-1.5 h-4 w-4" />View</Button>
-                          <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onChangeHolder={asset.assignedTo?undefined:()=>setHolderAsset(asset)} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
+                          <AssetActionMenu asset={asset} onLabel={() => setLabelAssets([asset])} onView={() => setViewingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onEdit={() => setEditingAsset(asset)} onMove={()=>setMovingAsset(asset)} onDeploy={['available','deployed'].includes(asset.status)?()=>setDeployingAsset(asset):undefined} onReturnToStock={asset.status==='deployed'?()=>returnAssetToStock(asset):undefined} onTransfer={()=>setTransferringAsset(asset)} onReverseReceipt={isSuperAdmin&&asset.invoiceItemId?()=>setReversingReceipt(asset):undefined} onArchive={() => handleDelete(asset.id)} hideView />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -658,8 +670,8 @@ export function AssetsPage({
       </Dialog>
 
       <AssetTransferDialog asset={transferringAsset} companies={companies.filter(c=>c.active&&c.id!==getActiveCompanyId())} onClose={()=>setTransferringAsset(null)} onTransfer={async(targetCompanyId,newAssetTag,reason)=>{if(!transferringAsset)return;try{await transferAsset({sourceCompanyId:getActiveCompanyId()!,targetCompanyId,assetId:transferringAsset.id,newAssetTag,reason});window.location.reload();}catch(error){if(!(error instanceof Error)||!error.message.includes('Only the Super Admin'))throw error;await requestTransfer({requestType:'asset',sourceCompanyId:getActiveCompanyId()!,sourceSiteId:transferringAsset.siteId,targetCompanyId,entityId:transferringAsset.id,newAssetTag,reason});}}} />
-      <ChangeHolderDialog asset={holderAsset} canCreate={isSuperAdmin} onClose={()=>setHolderAsset(null)} onConfirm={(holder,note)=>{if(!holderAsset)return;const was=currentHolder(holderAsset,holders);onAssetsChange(assets.map(a=>a.id===holderAsset.id?{...a,heldBy:holder.id}:a));onHistoryChange([...history,{id:`H-${Date.now()}-HOLDER-${holderAsset.id}`,assetId:holderAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:was?.name||'No holder',to:holder.name,siteId:holderAsset.siteId,reason:'Holder changed',notes:note}]);toast.success(`${holderAsset.assetTag} is now held by ${holder.name}`);setHolderAsset(null);}} />
-      <MoveAssetDialog asset={movingAsset} locations={sitesList} onClose={()=>setMovingAsset(null)} onMove={async(targetSiteId,reason)=>{const companyId=getActiveCompanyId();if(!movingAsset||!companyId)return;if(movingAsset.assignedTo)throw new Error('Return this assigned asset before moving it to another site.');if(['super_admin','admin'].includes(currentUser.role)){onAssetsChange(assets.map(asset=>asset.id===movingAsset.id?{...asset,siteId:targetSiteId,status:'available',heldBy:defaultHolder(holders,targetSiteId)?.id}:asset));onHistoryChange([...history,{id:`H-${Date.now()}-MOVE`,assetId:movingAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:movingAsset.siteId,to:targetSiteId,siteId:targetSiteId,reason,notes:'Asset moved by Super Admin.'}]);}else{await requestTransfer({requestType:'asset',sourceCompanyId:companyId,sourceSiteId:movingAsset.siteId,targetCompanyId:companyId,targetSiteId,entityId:movingAsset.id,newAssetTag:movingAsset.assetTag,reason});}}} />
+      <DeployDialog asset={deployingAsset} places={deployingAsset ? deployedPlaces(assets, deployingAsset.siteId) : []} onClose={() => setDeployingAsset(null)} onConfirm={(where, note) => { if (!deployingAsset) return; const r = deployAsset(deployingAsset, where, currentUser.id, note); onAssetsChange(assets.map(a => (a.id === deployingAsset.id ? r.asset : a))); onHistoryChange([...history, r.history]); toast.success(`${deployingAsset.assetTag} is deployed at ${where}`); setDeployingAsset(null); }} />
+      <MoveAssetDialog asset={movingAsset} locations={sitesList} onClose={()=>setMovingAsset(null)} onMove={async(targetSiteId,reason)=>{const companyId=getActiveCompanyId();if(!movingAsset||!companyId)return;if(movingAsset.assignedTo)throw new Error('Return this assigned asset before moving it to another site.');if(['super_admin','admin'].includes(currentUser.role)){onAssetsChange(assets.map(asset=>asset.id===movingAsset.id?{...asset,siteId:targetSiteId,status:'available',deployedAt:undefined,heldBy:defaultHolder(holders,targetSiteId)?.id}:asset));onHistoryChange([...history,{id:`H-${Date.now()}-MOVE`,assetId:movingAsset.id,timestamp:new Date().toISOString(),action:'Moved',performedBy:currentUser.id,from:movingAsset.siteId,to:targetSiteId,siteId:targetSiteId,reason,notes:'Asset moved by Super Admin.'}]);}else{await requestTransfer({requestType:'asset',sourceCompanyId:companyId,sourceSiteId:movingAsset.siteId,targetCompanyId:companyId,targetSiteId,entityId:movingAsset.id,newAssetTag:movingAsset.assetTag,reason});}}} />
       <ReverseReceiptDialog asset={reversingReceipt} onClose={()=>setReversingReceipt(null)} onReverse={async(reason)=>{if(!reversingReceipt)return;const updated=await reverseInvoiceReceipt(reversingReceipt.id,reason) as Asset;onAssetsChange(assets.map(asset=>asset.id===updated.id?updated:asset));onHistoryChange([...history,{id:`H-${Date.now()}-RECEIPT-REVERSED`,assetId:updated.id,timestamp:new Date().toISOString(),action:'Updated',performedBy:currentUser.id,reason,notes:'Invoice receipt reversed by Super Admin.'}]);}} />
       {labelAssets && <Suspense fallback={null}><LabelPrintDialog assets={assets} initialSelection={labelAssets} users={usersList} onClose={() => setLabelAssets(null)} /></Suspense>}
 
@@ -728,8 +740,10 @@ export function AssetsPage({
                 ...data,
                 assignedTo: data.assignedTo || undefined,
                 heldBy: data.assignedTo ? undefined : (editingAsset?.heldBy || defaultHolder(holders, data.siteId)?.id),
-                status: data.assignedTo ? 'assigned' : data.status
+                status: data.assignedTo ? 'assigned' : data.status,
+                deployedAt: !data.assignedTo && data.status === 'deployed' ? (data.deployedAt || '').trim() || undefined : undefined,
               };
+              if (normalizedData.status === 'deployed' && !normalizedData.deployedAt) { toast.error('Say where this asset is installed (for example “Server room”).'); return; }
 
               if (editingAsset) {
                 const previous = assets.find(a => a.id === editingAsset.id);
@@ -894,7 +908,8 @@ function AssetActionMenu({
   onHistory,
   onEdit,
   onMove,
-  onChangeHolder,
+  onDeploy,
+  onReturnToStock,
   onTransfer,
   onReverseReceipt,
   onLabel,
@@ -906,8 +921,9 @@ function AssetActionMenu({
   onHistory: () => void;
   onEdit: () => void;
   onMove: () => void;
-  /** Only offered while the asset is not assigned to an employee. */
-  onChangeHolder?: () => void;
+  /** Offered for available assets (mark as deployed) and deployed ones (change where). */
+  onDeploy?: () => void;
+  onReturnToStock?: () => void;
   onTransfer: () => void;
   onReverseReceipt?: () => void;
   onLabel?: () => void;
@@ -924,7 +940,8 @@ function AssetActionMenu({
         <DropdownMenuItem onSelect={onEdit}><Edit />Edit asset</DropdownMenuItem>
         <DropdownMenuItem onSelect={onHistory}><History />View history</DropdownMenuItem>
         {onLabel&&<DropdownMenuItem onSelect={onLabel}><Printer />Print label</DropdownMenuItem>}
-        {onChangeHolder && <DropdownMenuItem onSelect={onChangeHolder}><Building2 />Change holder</DropdownMenuItem>}
+        {onDeploy && <DropdownMenuItem onSelect={onDeploy}><Server />{asset.status === 'deployed' ? 'Change where installed' : 'Mark as deployed'}</DropdownMenuItem>}
+        {onReturnToStock && <DropdownMenuItem onSelect={onReturnToStock}><Package />Return to stock</DropdownMenuItem>}
         <DropdownMenuItem onSelect={onMove}><History />Move to site</DropdownMenuItem>
         <DropdownMenuItem onSelect={onTransfer}><Building2 />Transfer to another company</DropdownMenuItem>
         {onReverseReceipt&&<DropdownMenuItem onSelect={onReverseReceipt}>Reverse invoice receipt</DropdownMenuItem>}
@@ -1038,6 +1055,7 @@ function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules
     insuranceExpiry: asset?.insuranceExpiry || '',
     siteId: asset?.siteId || defaultSiteId,
     assignedTo: asset?.assignedTo || '',
+    deployedAt: asset?.deployedAt || '',
     notes: asset?.notes || ''
   });
   const [activeSection, setActiveSection] = useState<'general' | 'lifecycle' | 'technical'>('general');
@@ -1209,18 +1227,24 @@ function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules
               setFormData({
                 ...formData,
                 status,
-                assignedTo: status === 'assigned' ? formData.assignedTo : ''
+                assignedTo: status === 'assigned' ? formData.assignedTo : '',
+                deployedAt: status === 'deployed' ? formData.deployedAt : ''
               });
             }}
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="available">Available</option>
             <option value="assigned">Assigned</option>
+            <option value="deployed">Deployed (installed on site)</option>
             <option value="maintenance">Under Repair</option>
             <option value="retired">Retired</option>
             <option value="disposed">Disposed</option>
             <option value="lost">Lost</option>
           </select>
+        </div>}
+        {!isCreating && formData.status === 'deployed' && <div className="space-y-2">
+          <label className="text-sm font-medium">Where is it installed?</label>
+          <Input required value={formData.deployedAt || ''} onChange={(e) => setFormData({ ...formData, deployedAt: e.target.value })} placeholder="Server room, Gate 1, Reception…" />
         </div>}
         <div className="space-y-2">
           <label className="text-sm font-medium">Manufacturer</label>

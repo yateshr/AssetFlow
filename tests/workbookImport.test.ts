@@ -50,8 +50,8 @@ describe('holderKindFor', () => {
     expect(holderKindFor('90103-1', 'IT Assets Manager Nahuli', 'IT')).toBe('stock');
     expect(holderKindFor('IT SPARE', 'IT STAND BY', 'IT')).toBe('stock');
     expect(holderKindFor('IT HO', 'IT HO', 'IT HO')).toBe('stock');
-    expect(holderKindFor('IT-CAM-001', 'RPP 1 CAMERA', 'IT')).toBe('shared');
-    expect(holderKindFor('IT01', 'IIOT MACHINE PC', 'IT')).toBe('shared');
+    expect(holderKindFor('IT-CAM-001', 'RPP 1 CAMERA', 'IT')).toBe('deployed');
+    expect(holderKindFor('IT01', 'IIOT MACHINE PC', 'IT')).toBe('deployed');
     expect(holderKindFor('Ex-Employee 3', 'Unassigned PC', 'VACANT-ACCOUNT')).toBe('vacant');
     expect(holderKindFor('INACTIVE USER', 'USER INACTIVE', 'LEFT')).toBe('vacant');
   });
@@ -70,23 +70,27 @@ describe('workbook import', () => {
     expect(r.assets.find(a => a.assetTag === 'NP-IT-CPU-B0001')).toMatchObject({ status: 'assigned' });
   });
 
-  it('turns account, shared and vacant rows into holders, not employees', async () => {
+  it('keeps only the site manager account as a holder; cameras and vacant desks are not holders or employees', async () => {
     const r = await parseAssetWorkbooks([workbook()]);
-    const kinds = r.holders.map(h => `${h.kind}:${h.name}`).sort();
-    expect(kinds).toContain('stock:IT Assets Manager Nahuli');
-    expect(kinds).toContain('shared:RPP 1 CAMERA');
-    expect(kinds).toContain('vacant:Vacant desk (DESIGN)');
+    expect(r.holders.map(h => h.kind + ':' + h.name)).toContain('stock:IT Assets Manager Nahuli');
+    expect(r.holders.every(h => h.kind === 'stock')).toBe(true);
+    expect(r.holders.some(h => /CAMERA|Vacant|Unassigned/i.test(h.name))).toBe(false);
     expect(r.users.some(u => /Manager|CAMERA|Unassigned/i.test(u.name))).toBe(false);
   });
 
-  it('keeps unassigned assets with their holder, not as assignments', async () => {
+  it('imports installed equipment as deployed with its place, and spares and vacant desks as stock', async () => {
     const r = await parseAssetWorkbooks([workbook()]);
     const by = (tag: string) => r.assets.find(a => a.assetTag === tag)!;
     const holderName = (tag: string) => r.holders.find(h => h.id === by(tag).heldBy)?.name;
-    expect(by('NP-IT-MOU-B0002').status).toBe('available');
+    // the spare mouse is stock held by the site's IT Assets Manager
+    expect(by('NP-IT-MOU-B0002')).toMatchObject({ status: 'available' });
     expect(holderName('NP-IT-MOU-B0002')).toBe('IT Assets Manager Nahuli');
-    expect(holderName('NP-IT-CAM-B0003')).toBe('RPP 1 CAMERA');
-    expect(holderName('NP-IT-CPU-B0004')).toBe('Vacant desk (DESIGN)');
+    // the gate camera is deployed at its place and held by the same kind of account
+    expect(by('NP-IT-CAM-B0003')).toMatchObject({ status: 'deployed', deployedAt: 'RPP 1 CAMERA' });
+    expect(by('NP-IT-CAM-B0003').heldBy).toBeTruthy();
+    // an old PC on a vacant desk goes back to stock
+    expect(by('NP-IT-CPU-B0004')).toMatchObject({ status: 'available', deployedAt: undefined });
+    expect(by('NP-IT-CPU-B0004').heldBy).toBeTruthy();
     expect(by('NP-IT-CPU-B0001').heldBy).toBeUndefined();
   });
 
@@ -96,11 +100,11 @@ describe('workbook import', () => {
     expect(r.holders.some(h => h.siteId === somnath.id && h.kind === 'stock')).toBe(true);
   });
 
-  it('keeps only one stock holder per site; a second stock-looking row becomes shared', async () => {
+  it('keeps only one stock holder per site and moves a second stock-looking row to the first', async () => {
     const r = await parseAssetWorkbooks([workbook([[5, 'IT SPARE', 'IT STAND BY', 'NAHULI', 'IT', '', '']])]);
     const nahuli = r.locations.find(l => /NAHULI/i.test(l.name))!;
     const here = r.holders.filter(h => h.siteId === nahuli.id);
-    expect(here.filter(h => h.kind === 'stock')).toHaveLength(1);
-    expect(here.find(h => h.name === 'IT STAND BY')).toMatchObject({ kind: 'shared' });
+    expect(here).toHaveLength(1);
+    expect(here[0].kind).toBe('stock');
   });
 });

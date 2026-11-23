@@ -7,7 +7,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { Asset, Invoice, ItCallLog } from '@/data/models';
 import { buildExpiryAlerts, describeDays } from '@/lib/alerts';
 import { slaFor } from '@/lib/sla';
-import type { Holder } from '@/lib/holders';
 import type { StockMinimum } from '@/lib/stock';
 import type { MasterDataOption } from '@/data/masterData';
 import type { SoftwareLicense, Vendor } from '@/data/models';
@@ -41,7 +40,6 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
   const policy=policies[0]||DEFAULT_SYSTEM_POLICY;
   const [licenses]=useCollection<SoftwareLicense>('licenses');
   const [priorities]=useCollection<MasterDataOption>('call-priorities');
-  const [holders] = useCollection<Holder>('holders');
   const [minimums] = useCollection<StockMinimum>('stock-minimums');
   const [sites] = useCollection<{ id: string; name: string }>('locations');
   const [categories] = useCollection<{ id: string; name: string }>('asset-categories');
@@ -65,7 +63,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     const now = Date.now();
 
     const stock = {
-      holders, minimums,
+      minimums,
       siteName: (id: string) => sites.find(s => s.id === id)?.name || id,
       typeName: (id: string) => categories.find(c => c.id === id)?.name || id,
     };
@@ -144,7 +142,7 @@ export function GlobalNotificationCenter({ assets, invoices, callLogs, vendors =
     } catch {}
 
     return result;
-  }, [assets, invoices, callLogs, licenses, vendors, priorities, holders, minimums, sites, categories, read, open, policy.warrantyAlertDays, policy.licenseAlertDays]);
+  }, [assets, invoices, callLogs, licenses, vendors, priorities, minimums, sites, categories, read, open, policy.warrantyAlertDays, policy.licenseAlertDays]);
 
   const unread = notifications.filter(n => !read[n.id]).length;
 

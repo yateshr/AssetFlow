@@ -38,7 +38,7 @@ export function StockPanel({ assets, onAssetsChange, history, onHistoryChange, u
   const [open, setOpen] = useState(true);
   const [issuing, setIssuing] = useState<StockLine | null>(null);
 
-  const lines = useMemo(() => stockLines(assets, holders, minimums), [assets, holders, minimums]);
+  const lines = useMemo(() => stockLines(assets, minimums), [assets, minimums]);
   const typeName = (id: string) => categories.find(c => c.id === id)?.name || id;
   const siteName = (id: string) => sites.find(s => s.id === id)?.name || id;
   const lowCount = lines.filter(l => l.low).length;
@@ -61,7 +61,7 @@ export function StockPanel({ assets, onAssetsChange, history, onHistoryChange, u
     const asset = assets.find(a => a.id === assetId);
     const employee = users.find(u => u.id === employeeId);
     if (!asset || !employee) return;
-    const holderName = holders.find(h => h.id === (asset.heldBy ?? defaultHolder(holders, asset.siteId)?.id))?.name || 'Stock';
+    const holderName = (holders.find(h => h.id === asset.heldBy) ?? defaultHolder(holders, asset.siteId))?.name || 'Stock';
     const next = assignments.reduce((n, a) => Math.max(n, Number(a.id.replace(/\D/g, '')) || 0), 0) + 1;
     const result = issueFromStock(asset, employee, holderName, currentUser.id, next, notes);
     setAssignments(prev => [...prev, result.assignment]);
@@ -117,7 +117,7 @@ export function StockPanel({ assets, onAssetsChange, history, onHistoryChange, u
         })}
       </CardContent>
 
-      <IssueDialog line={issuing} assets={assets} holders={holders} users={users} typeName={typeName} siteName={siteName} onClose={() => setIssuing(null)} onIssue={issue} />
+      <IssueDialog line={issuing} assets={assets} users={users} typeName={typeName} siteName={siteName} onClose={() => setIssuing(null)} onIssue={issue} />
     </Card>
   );
 }
@@ -139,8 +139,8 @@ function AddMinimum({ categories, onAdd }: { categories: AssetCategory[]; onAdd:
   );
 }
 
-function IssueDialog({ line, assets, holders, users, typeName, siteName, onClose, onIssue }: {
-  line: StockLine | null; assets: Asset[]; holders: Holder[]; users: User[];
+function IssueDialog({ line, assets, users, typeName, siteName, onClose, onIssue }: {
+  line: StockLine | null; assets: Asset[]; users: User[];
   typeName: (id: string) => string; siteName: (id: string) => string;
   onClose: () => void; onIssue: (line: StockLine, assetId: string, employeeId: string, notes: string) => void;
 }) {
@@ -153,8 +153,8 @@ function IssueDialog({ line, assets, holders, users, typeName, siteName, onClose
   if (line && line !== shown) setShown(line);
   const current = line ?? shown;
 
-  const candidates = useMemo(() => (current ? assets.filter(a => a.siteId === current.siteId && a.type === current.type && isInStock(a, holders)).sort((a, b) => (a.purchaseDate || '').localeCompare(b.purchaseDate || '')) : []), [assets, holders, current]);
-  const suggested = current ? pickForIssue(assets, holders, current.siteId, current.type) : undefined;
+  const candidates = useMemo(() => (current ? assets.filter(a => a.siteId === current.siteId && a.type === current.type && isInStock(a)).sort((a, b) => (a.purchaseDate || '').localeCompare(b.purchaseDate || '')) : []), [assets, current]);
+  const suggested = current ? pickForIssue(assets, current.siteId, current.type) : undefined;
   const assetId = chosenAsset && candidates.some(a => a.id === chosenAsset) ? chosenAsset : suggested?.id || '';
 
   const people = useMemo(() => {

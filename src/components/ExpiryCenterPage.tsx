@@ -12,7 +12,6 @@ import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from '@/data/masterData';
 import type { Asset, Invoice, SoftwareLicense, Vendor } from '@/data/models';
 import { formatDate } from '@/data/models';
 import { KIND_LABEL, buildExpiryAlerts, describeDays, isUndated, type ExpiryAlert, type ExpiryKind, type Severity } from '@/lib/alerts';
-import type { Holder } from '@/lib/holders';
 import type { StockMinimum } from '@/lib/stock';
 import type { Page } from './App';
 import { WarrantyTracker } from './WarrantyTracker';
@@ -47,16 +46,15 @@ export function ExpiryCenterPage({ assetsList, invoicesList, vendorsList, onNavi
   const [query, setQuery] = useState('');
   const [view, setView] = useState<'alerts' | 'warranty'>('alerts');
 
-  const [holders] = useCollection<Holder>('holders');
   const [minimums] = useCollection<StockMinimum>('stock-minimums');
   const [sites] = useCollection<{ id: string; name: string }>('locations');
   const [categories] = useCollection<{ id: string; name: string }>('asset-categories');
   const alerts = useMemo(
     () => buildExpiryAlerts({
       assets: assetsList, licenses, vendors: vendorsList, invoices: invoicesList, policy,
-      stock: { holders, minimums, siteName: id => sites.find(s => s.id === id)?.name || id, typeName: id => categories.find(c => c.id === id)?.name || id },
+      stock: { minimums, siteName: id => sites.find(s => s.id === id)?.name || id, typeName: id => categories.find(c => c.id === id)?.name || id },
     }),
-    [assetsList, licenses, vendorsList, invoicesList, policy, holders, minimums, sites, categories]
+    [assetsList, licenses, vendorsList, invoicesList, policy, minimums, sites, categories]
   );
 
   const counts = useMemo(() => {

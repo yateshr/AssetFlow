@@ -2,7 +2,8 @@ import { getCollection } from '@/lib/db';
 import { DEFAULT_SYSTEM_POLICY, type SystemPolicy } from './masterData';
 
 // Types
-export type AssetStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'disposed' | 'lost';
+/** available = in stock; deployed = installed at a place on site (see Asset.deployedAt); assigned = held by an employee. */
+export type AssetStatus = 'available' | 'assigned' | 'deployed' | 'maintenance' | 'retired' | 'disposed' | 'lost';
 export type AssetType = string;
 export interface AssetCategory { id: string; name: string; code?: string; active: boolean; }
 export type AssignmentStatus = 'active' | 'returned' | 'pending';
@@ -126,8 +127,10 @@ export interface Asset {
   /** Set when the asset is archived. Archived assets stay in the assets table (so reports, tag and serial checks still see them) but are hidden from the active list. */
   archivedAt?: string;
   archivedBy?: string;
-  /** Holder (see lib/holders) while the asset is not assigned to an employee. */
+  /** Holder (see lib/holders) while the asset is not assigned to an employee: always the site's IT Assets Manager. */
   heldBy?: string;
+  /** Where a deployed asset is installed, for example "Server room" or "Gate 1". Only set while status is deployed. */
+  deployedAt?: string;
 }
 
 export interface User {

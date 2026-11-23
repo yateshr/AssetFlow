@@ -72,6 +72,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
   const totalAssets = assets.length;
   const assignedAssets = assets.filter(a => a.status === 'assigned').length;
   const availableAssets = assets.filter(a => a.status === 'available').length;
+  const deployedAssets = assets.filter(a => a.status === 'deployed').length;
   const maintenanceAssets = assets.filter(a => a.status === 'maintenance').length;
   const retiredAssets = assets.filter(a => a.status === 'retired').length;
   const activeAssignments = assignments.filter(a => a.status === 'active').length;
@@ -87,6 +88,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
   const statusData = [
     { name: 'Assigned', value: assignedAssets, color: 'var(--primary)' },
     { name: 'Available', value: availableAssets, color: 'var(--chart-2)' },
+    { name: 'Deployed', value: deployedAssets, color: 'var(--chart-4)' },
     { name: 'Maintenance', value: maintenanceAssets, color: 'var(--chart-5)' },
     { name: 'Retired', value: retiredAssets, color: 'var(--muted-foreground)' },
   ];

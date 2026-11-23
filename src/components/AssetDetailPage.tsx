@@ -227,7 +227,7 @@ function CustodyCard({ asset, holder, stockHolder, userName, assignment }: { ass
         ) : stockHolder ? (
           <>
             <p className="font-medium">{stockHolder.name}</p>
-            <p className="text-muted-foreground">Not assigned to an employee · {stockHolder.kind === 'stock' ? 'in stock' : stockHolder.kind === 'shared' ? 'shared device' : 'vacant desk'}</p>
+            <p className="text-muted-foreground">{asset.status === 'deployed' ? `Deployed at ${asset.deployedAt || '—'}` : asset.status === 'available' ? 'In stock, not assigned to an employee' : 'Not assigned to an employee'}</p>
             {stockHolder.responsibleUserId && <p className="text-xs text-muted-foreground">Responsible: {userName(stockHolder.responsibleUserId)}</p>}
           </>
         ) : <p className="text-muted-foreground">{asset.status === 'assigned' ? 'Assigned (user not found)' : 'Not assigned. No holder is set for this site yet.'}</p>}
@@ -322,7 +322,7 @@ function DetailsTab({ asset, site, holder }: { asset: Asset; site?: Location; ho
         <KV label="Condition">{asset.condition ? masterLabel('asset-conditions', asset.condition) : ''}</KV><KV label="Accessories">{asset.accessories}</KV>
       </dl></Section>
       <Section title="Location & custody"><dl className="text-sm">
-        <KV label="Site">{site?.name}</KV><KV label="Status"><span className="capitalize">{STATUS_LABEL[asset.status] || asset.status}</span></KV><KV label="Assigned to">{holder?.name}</KV>
+        <KV label="Site">{site?.name}</KV><KV label="Status"><span className="capitalize">{STATUS_LABEL[asset.status] || asset.status}</span></KV><KV label="Assigned to">{holder?.name}</KV>{asset.status === 'deployed' && <KV label="Installed at">{asset.deployedAt}</KV>}
       </dl></Section>
       <Section title="Purchase"><dl className="text-sm">
         <KV label="Purchase date">{dmy(asset.purchaseDate)}</KV><KV label="Purchase price">{formatCurrency(asset.purchasePrice)}</KV>

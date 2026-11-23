@@ -5,7 +5,6 @@
  */
 import type { Asset, Invoice, SoftwareLicense, Vendor } from '@/data/models';
 import type { SystemPolicy } from '@/data/masterData';
-import type { Holder } from './holders';
 import { minimumId, stockLines, type StockMinimum } from './stock';
 
 export type ExpiryKind = 'warranty' | 'amc' | 'insurance' | 'license' | 'seats' | 'contract' | 'invoice' | 'stock';
@@ -73,7 +72,7 @@ export interface AlertInput {
   invoices: Invoice[];
   policy: Pick<SystemPolicy, 'warrantyAlertDays' | 'licenseAlertDays'>;
   /** Optional: site holders and minimum levels, to warn when a site is running low on an asset type. */
-  stock?: { holders: Holder[]; minimums: StockMinimum[]; siteName: (id: string) => string; typeName: (id: string) => string };
+  stock?: { minimums: StockMinimum[]; siteName: (id: string) => string; typeName: (id: string) => string };
   now?: Date;
 }
 
@@ -81,7 +80,7 @@ export function buildExpiryAlerts({ assets, licenses, vendors, invoices, policy,
   const out: ExpiryAlert[] = [];
 
   if (stock) {
-    for (const line of stockLines(assets, stock.holders, stock.minimums).filter(l => l.low)) {
+    for (const line of stockLines(assets, stock.minimums).filter(l => l.low)) {
       out.push({
         id: `stock-${minimumId(line.siteId, line.type)}`,
         kind: 'stock',

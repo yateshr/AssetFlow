@@ -162,6 +162,7 @@ export function ReportsPage({
   const unconvertedInvoices = periodInvoices.filter(invoice => invoiceBaseTotal(invoice) === null).length;
   const assignedCount = filteredAssets.filter((asset) => asset.status === 'assigned').length;
   const availableCount = filteredAssets.filter((asset) => asset.status === 'available').length;
+  const deployedCount = filteredAssets.filter((asset) => asset.status === 'deployed').length;
   const maintenanceCount = filteredAssets.filter((asset) => asset.status === 'maintenance').length;
   const retiredCount = filteredAssets.filter((asset) => asset.status === 'retired').length;
   const disposedCount = filteredAssets.filter((asset) => asset.status === 'disposed').length;
@@ -188,6 +189,7 @@ export function ReportsPage({
   const statusRows = [
     { name: 'Assigned', value: assignedCount, color: 'var(--primary)' },
     { name: 'Available', value: availableCount, color: 'var(--chart-2)' },
+    { name: 'Deployed', value: deployedCount, color: 'var(--chart-4)' },
     { name: 'Maintenance', value: maintenanceCount, color: 'var(--chart-5)' },
     { name: 'Retired', value: retiredCount, color: 'var(--muted-foreground)' },
     { name: 'Disposed', value: disposedCount, color: 'var(--muted-foreground)' },
@@ -518,9 +520,10 @@ export function ReportsPage({
         <MetricCard label="Active Assignments" value={activeAssignments} icon={Activity} />
       </div>
 
-      <div className={`${reportView === 'overview' || reportView === 'assets' ? 'grid' : 'hidden'} grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`}>
+      <div className={`${reportView === 'overview' || reportView === 'assets' ? 'grid' : 'hidden'} grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5`}>
         <MetricCard label="Assigned" value={assignedCount} icon={Users} />
         <MetricCard label="Available" value={availableCount} icon={Laptop} />
+        <MetricCard label="Deployed" value={deployedCount} icon={Laptop} />
         <MetricCard label="Under Maintenance" value={maintenanceCount} icon={TrendingUp} />
         <MetricCard label="Active Employees" value={activeUsers} icon={Building2} />
       </div>

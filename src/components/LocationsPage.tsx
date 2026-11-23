@@ -333,7 +333,7 @@ function LocationForm({ location, locationTypes, onSubmit, onCancel }: {
       {!location && (
         <label className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
           <input type="checkbox" className="mt-1" checked={createStockHolder} onChange={e => setCreateStockHolder(e.target.checked)} />
-          <span><b>Create the stock holder “{stockHolderName(formData.name || 'this site')}”</b><br /><span className="text-xs text-muted-foreground">It holds new and spare assets for this site. You can add more holders (shared devices, vacant desks) after creating the site.</span></span>
+          <span><b>Create the IT Assets Manager “{stockHolderName(formData.name || 'this site')}”</b><br /><span className="text-xs text-muted-foreground">It holds everything at this site that is not given to an employee: new and spare assets in stock, and equipment deployed on site.</span></span>
         </label>
       )}
       <DialogFooter>
