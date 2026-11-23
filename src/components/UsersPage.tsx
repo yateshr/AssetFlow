@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { EmployeeImportDialog } from './EmployeeImportDialog';
 import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
+import { isEmployee } from '@/lib/people';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, Edit, Trash2, PackageCheck, Eye, ArrowRightLeft, Upload } from 'lucide-react';
 import { getActiveCompanyId, listTransferLocations, requestTransfer, transferEmployee } from '@/lib/db';
@@ -69,7 +70,8 @@ export function UsersPage({
     Math.max(960, 960 + Math.max(0, longestAssetText - 32) * 7)
   );
 
-  const filteredUsers = usersList.filter(user => {
+  // Employees only: logins (Super Admin, site IT admins) are managed under Companies & access, not here.
+  const filteredUsers = usersList.filter(isEmployee).filter(user => {
     const userLocation = sitesList.find(location => location.id === user.siteId);
     const matchesSearch = searchQuery === '' || 
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -208,7 +208,7 @@ export const users: User[] = [
     email: 'sarah.johnson@company.com',
     department: 'Engineering',
     siteId: 'LOC-001',
-    role: 'admin',
+    role: 'user',
     phone: '+1 (555) 123-4567',
     joinDate: '2020-03-15',
     status: 'active'
@@ -230,7 +230,7 @@ export const users: User[] = [
     email: 'emily.rodriguez@company.com',
     department: 'Marketing',
     siteId: 'LOC-002',
-    role: 'manager',
+    role: 'user',
     phone: '+1 (555) 345-6789',
     joinDate: '2019-11-20',
     status: 'active'
@@ -263,7 +263,7 @@ export const users: User[] = [
     email: 'robert.taylor@company.com',
     department: 'Finance',
     siteId: 'LOC-002',
-    role: 'manager',
+    role: 'user',
     phone: '+1 (555) 678-9012',
     joinDate: '2018-05-01',
     status: 'active'

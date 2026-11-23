@@ -1,3 +1,4 @@
+import { isEmployee } from '@/lib/people';
 import { useEffect, useMemo, useState } from 'react';
 import { CurrencyIcon } from '@/components/CurrencyIcon';
 import {
@@ -181,7 +182,7 @@ export function ReportsPage({
 
   const activeAssignments = assignmentsList.filter((a) => a.status === 'active').length;
   const pendingAssignments = assignmentsList.filter((a) => a.status === 'pending').length;
-  const activeUsers = usersList.filter((u) => u.status === 'active').length;
+  const activeUsers = usersList.filter((u) => isEmployee(u) && u.status === 'active').length;
   const openCalls = periodCalls.filter((call) => call.status === 'open' || call.status === 'in-progress').length;
   const resolvedCalls = periodCalls.filter((call) => call.status === 'resolved' || call.status === 'closed').length;
   const callResolutionRate = periodCalls.length ? Math.round((resolvedCalls / periodCalls.length) * 100) : 0;

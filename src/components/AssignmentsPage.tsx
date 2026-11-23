@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { defaultHolder, type Holder } from '@/lib/holders';
+import { isEmployee } from '@/lib/people';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Plus, Search, ArrowRightLeft, CheckCircle, XCircle, Clock, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -135,7 +136,7 @@ export function AssignmentsPage({
 
   // Only stock is on offer: deployed equipment (installed on site) is not handed out.
   const availableAssets = assetsList.filter(a => a.status === 'available');
-  const activeUsers = usersList.filter(user => user.status === 'active');
+  const activeUsers = usersList.filter(user => isEmployee(user) && user.status === 'active');
 
   return (
     <div className="af-stagger space-y-6">

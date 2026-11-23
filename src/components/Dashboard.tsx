@@ -1,3 +1,4 @@
+import { isEmployee } from '@/lib/people';
 import { 
   Package, 
   Users, 
@@ -76,7 +77,7 @@ export function Dashboard({ onNavigate, assetsList = [], usersList = [], assignm
   const maintenanceAssets = assets.filter(a => a.status === 'maintenance').length;
   const retiredAssets = assets.filter(a => a.status === 'retired').length;
   const activeAssignments = assignments.filter(a => a.status === 'active').length;
-  const totalUsers = users.length;
+  const totalUsers = users.filter(isEmployee).length;
   const today = new Date().toISOString().split('T')[0];
   const todaysCalls = itCallLogs.filter(call => call.date === today).length;
   const openCalls = itCallLogs.filter(call => call.status === 'open' || call.status === 'in-progress').length;

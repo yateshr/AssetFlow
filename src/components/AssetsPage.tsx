@@ -9,6 +9,7 @@ import { confirmDialog } from '@/components/ConfirmHost';
 import { toast } from 'sonner';
 import { ExportMenu } from '@/components/ExportMenu';
 import { StockPanel } from '@/components/StockPanel';
+import { isEmployee } from '@/lib/people';
 import { DeployDialog } from '@/components/DeployDialog';
 import { deployAsset, deployedPlaces, returnToStock } from '@/lib/stock';
 import { useCollection } from '@/lib/db';
@@ -186,7 +187,7 @@ export function AssetsPage({
     onInitialFilterConsumed?.();
   }, [initialFilter?.status, initialFilter?.type, initialFilter?.warranty]);
 
-  const departments = [...new Set(usersList.map(user => user.department).filter(Boolean))].sort();
+  const departments = [...new Set(usersList.filter(isEmployee).map(user => user.department).filter(Boolean))].sort();
 
   const getAssetIcon = (type: AssetType) => {
     switch (type) {
@@ -409,7 +410,7 @@ export function AssetsPage({
 
       <StockPanel
         assets={assets} onAssetsChange={onAssetsChange} history={history} onHistoryChange={onHistoryChange}
-        users={usersList} sites={sitesList} categories={assetCategories} currentUser={currentUser}
+        users={usersList.filter(isEmployee)} sites={sitesList} categories={assetCategories} currentUser={currentUser}
         onShow={(siteId, type, holderId) => {
           setStatusFilter('available'); setTypeFilter(type); setLocationFilter(siteId); setHolderFilter(holderId || 'all'); setSearchQuery('');
           setTimeout(() => document.getElementById('asset-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -1305,7 +1306,7 @@ function AssetForm({ asset, usersList, sitesList, assetCategories, assetTagRules
             className="w-full px-3 py-2 border border-input rounded-lg bg-background shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 text-sm"
           >
             <option value="">Unassigned</option>
-            {usersList.filter(user => user.status !== 'left').map(user => (
+            {usersList.filter(user => user.status !== 'left' && (isEmployee(user) || user.id === formData.assignedTo)).map(user => (
               <option key={user.id} value={user.id}>
                 {user.name} ({user.department})
               </option>

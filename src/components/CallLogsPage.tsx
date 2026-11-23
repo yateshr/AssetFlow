@@ -1,3 +1,4 @@
+import { isEmployee } from '@/lib/people';
 import { useMemo, useState } from 'react';
 import { masterLabel } from '@/lib/masterLabel';
 import { confirmDialog } from '@/components/ConfirmHost';
@@ -448,7 +449,7 @@ function CallLogForm({
             required
           >
             <option value="">Select user</option>
-            {usersList.map(user => (
+            {usersList.filter(user => isEmployee(user) || user.id === selectedUserId).map(user => (
               <option key={user.id} value={user.id}>
                 {user.name} ({user.department})
               </option>

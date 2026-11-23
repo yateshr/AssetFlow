@@ -1,3 +1,4 @@
+import { isEmployee } from '@/lib/people';
 import { useMemo } from 'react';
 import { CurrencyIcon } from '@/components/CurrencyIcon';
 import { Activity, AlertTriangle, Boxes, CheckCircle2, Laptop, Network, Package, RefreshCw, ShieldAlert, Users, Wrench } from 'lucide-react';
@@ -42,7 +43,7 @@ export function ManagementDashboard({ assets, users, onNavigate }: ManagementDas
     ['Under Repair', assets.filter(a => a.status === 'maintenance').length, Wrench],
     ['Lost', assets.filter(a => a.status === 'lost').length, AlertTriangle],
     ['Asset Value', formatCurrency(value), CurrencyIcon],
-    ['Employees', users.filter(u => u.status === 'active').length, Users],
+    ['Employees', users.filter(u => isEmployee(u) && u.status === 'active').length, Users],
     [`Warranty ≤${policy.warrantyAlertDays}d`, warranty90, ShieldAlert],
   ] as const;
 

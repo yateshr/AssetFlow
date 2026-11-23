@@ -1,3 +1,4 @@
+import { isEmployee } from '@/lib/people';
 import { useState } from 'react';
 import { Boxes, Calculator, ClipboardList, Server, UserRound, Wrench } from 'lucide-react';
 import type { Asset, AssetHistoryEvent, User } from '@/data/models';
@@ -52,9 +53,9 @@ export function OperationsPage({ assetsList, onAssetsChange, usersList, history,
       {tab === 'stock' && <StockTab userName={currentUser.name} />}
       {tab === 'infrastructure' && <InfrastructureTab />}
       {tab === 'maintenance' && <MaintenanceTab assets={assetsList} onAssetsChange={onAssetsChange} history={history} onHistoryChange={onHistoryChange} currentUser={currentUser} />}
-      {tab === 'requests' && <RequestsTab users={usersList} />}
+      {tab === 'requests' && <RequestsTab users={usersList.filter(isEmployee)} />}
       {tab === 'depreciation' && <DepreciationTab assets={assetsList} />}
-      {tab === 'my-assets' && <MyAssetsTab assets={assetsList} users={usersList} />}
+      {tab === 'my-assets' && <MyAssetsTab assets={assetsList} users={usersList.filter(isEmployee)} />}
     </div>
   );
 }

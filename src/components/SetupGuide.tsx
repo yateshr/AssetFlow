@@ -1,3 +1,4 @@
+import { isEmployee } from '@/lib/people';
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Circle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,7 +39,7 @@ export function SetupGuide({ onNavigate, assetCount, users }: { onNavigate: (pag
     { key: 'site', title: 'Add your first site', help: 'An office, plant or warehouse. Assets, employees and numbering belong to a site.', done: sites.length > 0, go: () => onNavigate('locations'), action: 'Add a site' },
     { key: 'numbering', title: 'Set up asset numbering', help: 'Choose how asset tags look at each site, for example NP-IT-LAP-A0001.', done: (numberedSites ?? 0) > 0, go: () => openSettings('asset-setup'), action: 'Set up numbering' },
     { key: 'departments', title: 'Add departments', help: 'The departments each site uses. Open Employees and use the Departments section.', done: departments.length > 0, go: () => onNavigate('users'), action: 'Open Employees' },
-    { key: 'employees', title: 'Add employees', help: 'Add people, or invite IT staff who will sign in.', done: users.length > 1, go: () => onNavigate('users'), action: 'Add employees' },
+    { key: 'employees', title: 'Add employees', help: 'Add the staff who will be given equipment. Logins for the Super Admin and site IT admins are created separately, under Companies & access.', done: users.some(isEmployee), go: () => onNavigate('users'), action: 'Add employees' },
     { key: 'asset', title: 'Register your first asset', help: 'Add one by hand, create a batch from an invoice, or import a workbook in Data Management.', done: assetCount > 0, go: () => onNavigate('assets'), action: 'Add an asset' },
     { key: 'labels', title: 'Print asset labels', help: 'Open an asset and print a QR label for your sticker size.', done: (() => { try { return kv.getItem('assetflow-label-settings') !== null; } catch { return false; } })(), go: () => onNavigate('assets'), action: 'Open assets' },
   ];
