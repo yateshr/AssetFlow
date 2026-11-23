@@ -8,7 +8,9 @@ import { ExportMenu } from '@/components/ExportMenu';
 import { useCollection } from '@/lib/db';
 import type { MasterDataOption } from '@/data/masterData';
 import { useState } from 'react';
-import { Plus, Search, Edit, Trash2, MapPin, Users, Building2, Network } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, MapPin, Users, Building2, Network, UserRound, Layers, Package, Hash } from 'lucide-react';
+import { isEmployee } from '@/lib/people';
+import type { User } from '@/data/models';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +42,9 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [holders, setHolders] = useCollection<Holder>('holders');
   const [spacesLocation,setSpacesLocation]=useState<Location|null>(null);
+  const [allAssets] = useCollection<Asset>('assets');
+  const [allUsers] = useCollection<User>('users');
+  const [allDepartments] = useCollection<{ id: string; name: string; siteId?: string }>('departments');
 
   const filteredLocations = sitesList.filter(location => {
     const matchesSearch = searchQuery === '' || 
@@ -62,7 +67,7 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
   };
 
   const getAssetCount = (siteId: string) => {
-    return getCollection<Asset>('assets').filter(a => a.siteId === siteId).length;
+    return allAssets.filter(a => a.siteId === siteId && !a.archivedAt).length;
   };
 
   const handleDelete = async (id: string) => {
@@ -132,54 +137,47 @@ export function LocationsPage({ sitesList, onSitesChange, canManage = true }: Lo
         ) : (
           filteredLocations.map((location) => {
             const assetCount = getAssetCount(location.id);
+            const employeeCount = allUsers.filter(u => isEmployee(u) && u.siteId === location.id && u.status === 'active').length;
+            const departmentCount = allDepartments.filter(d => d.siteId === location.id).length;
+            const holder = holders.find(h => h.siteId === location.id && h.active !== false);
+            const place = [location.city, location.state, location.country].filter(Boolean).join(', ');
+            const stats: Array<[string, number | string, typeof Layers]> = [['Departments', departmentCount, Layers], ['Employees', employeeCount, Users], ['Assets', assetCount, Package], ['Capacity', location.capacity || '—', Hash]];
             return (
-              <Card key={location.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Building2 className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground">{location.name}</h3>
-                        {(location.city || location.country) && <p className="text-xs text-muted-foreground">{[location.city,location.state,location.country].filter(Boolean).join(', ')}</p>}
-                        <Badge variant="outline" className={getTypeBadge(location.type)}>
-                          {masterLabel('location-types', location.type)}
-                        </Badge>
-                      </div>
+              <Card key={location.id} className="overflow-hidden transition-shadow hover:shadow-md">
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                      <Building2 className="h-5 w-5 text-primary" />
                     </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon-sm" onClick={() => setEditingLocation(location)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-base font-semibold leading-tight text-foreground">{location.name}</h3>
+                        <Badge variant="outline" className={`${getTypeBadge(location.type)} text-[11px]`}>{masterLabel('location-types', location.type)}</Badge>
+                      </div>
+                      {(place || location.address) && <p className="mt-1 flex items-start gap-1.5 text-xs leading-snug text-muted-foreground"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{place || location.address}</span></p>}
+                    </div>
+                    <div className="-mr-1 -mt-1 flex shrink-0 gap-0.5">
+                      <Button variant="ghost" size="icon-sm" title="Edit site" onClick={() => setEditingLocation(location)}><Edit className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon-sm" title="Manage building, floor, room and rack hierarchy" onClick={()=>setSpacesLocation(location)}><Network className="h-4 w-4"/></Button>
-                      {canManage && <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(location.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>}
+                      {canManage && <Button variant="ghost" size="icon-sm" title="Delete site" onClick={() => handleDelete(location.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
                     </div>
                   </div>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                      <p className="text-muted-foreground">{location.address}</p>
-                    </div>
-                    {location.siteCode && <div className="text-xs text-muted-foreground">Site code: <span className="font-medium text-foreground">{location.siteCode}</span>{location.building?` · ${location.building}`:''}</div>}
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-muted-foreground">Manager: {location.manager}</p>
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Capacity</p>
-                        <p className="font-medium text-foreground">{location.capacity}</p>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {stats.map(([label, value, Icon]) => (
+                      <div key={label} className="rounded-lg border bg-muted/30 px-2 py-2 text-center">
+                        <Icon className="mx-auto h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="mt-1 text-lg font-semibold leading-none tabular-nums text-foreground">{value}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Assets</p>
-                        <p className="font-medium text-foreground">{assetCount}</p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
+
+                  <dl className="space-y-1.5 border-t pt-3 text-sm">
+                    <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><UserRound className="h-4 w-4" /> Asset manager</dt><dd className="min-w-0 truncate text-right font-medium text-foreground" title={holder?.name}>{holder?.name || <span className="font-normal text-amber-600 dark:text-amber-400">Not set up</span>}</dd></div>
+                    <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Users className="h-4 w-4" /> Site manager</dt><dd className="min-w-0 truncate text-right text-foreground">{location.manager || '—'}</dd></div>
+                    {location.siteCode && <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Hash className="h-4 w-4" /> Site code</dt><dd className="text-right tabular-nums text-foreground">{location.siteCode}</dd></div>}
+                  </dl>
                 </CardContent>
               </Card>
             );
