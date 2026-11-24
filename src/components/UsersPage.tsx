@@ -41,7 +41,9 @@ export function UsersPage({
   history, onHistoryChange, currentUser, companies
 }: UsersPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [siteFilter, setSiteFilter] = useState('all');
+  // One site choice for the whole page: the employee table, its filters and the Departments section follow it.
+  const [siteFilter, setSiteFilterState] = useState(() => { try { return localStorage.getItem('assetflow-employees-site') || 'all'; } catch { return 'all'; } });
+  const setSiteFilter = (v: string) => { setSiteFilterState(v); try { localStorage.setItem('assetflow-employees-site', v); } catch { /* ignore */ } };
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
@@ -97,6 +99,8 @@ export function UsersPage({
   const pageCount = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const pageUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
+  // A remembered site that no longer exists (or is not visible to this person) counts as All sites.
+  const activeSite = siteFilter === 'all' || sitesList.some(l => l.id === siteFilter) ? siteFilter : 'all';
   const filtersActive = siteFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || searchQuery !== '';
   // E-mail is optional. Older imports invented addresses ending in @import.local: offer to clear them.
   const invented = employeeList.filter(u => /@import\.local$/i.test(u.email || ''));
@@ -289,6 +293,7 @@ export function UsersPage({
         sitesList={sitesList}
         usersList={usersList}
         onUsersChange={onUsersChange}
+        siteId={activeSite}
       />
 
       <EmployeeTransferDialog

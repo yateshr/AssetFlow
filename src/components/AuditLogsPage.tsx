@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { getCollection } from '@/lib/db';
+import { useCollection } from '@/lib/db';
 import { exportExcelReport } from '@/lib/reportExport';
 import { type AuditLog, type AssetHistoryEvent, type User as UserRecord, type Asset, formatDateTime } from '@/data/models';
 
@@ -18,6 +18,7 @@ interface AuditLogsPageProps {
 type AuditRow = AuditLog & { source?: string };
 
 export function AuditLogsPage({ history = [], usersList = [], assetsList = [] }: AuditLogsPageProps) {
+  const [systemLogs] = useCollection<AuditLog>('audit-logs');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState('all');
   const [entityFilter, setEntityFilter] = useState('all');
@@ -45,8 +46,8 @@ export function AuditLogsPage({ history = [], usersList = [], assetsList = [] }:
     source: event.source || 'lifecycle'
   })), [history, usersList, assetsList]);
 
-  const allLogs = useMemo<AuditRow[]>(() => [...getCollection<AuditLog>('audit-logs').map(x => ({...x, source:'system' as const})), ...lifecycleLogs]
-    .sort((a,b) => b.timestamp.localeCompare(a.timestamp)), [lifecycleLogs]);
+  const allLogs = useMemo<AuditRow[]>(() => [...systemLogs.map(x => ({...x, source:'system' as const})), ...lifecycleLogs]
+    .sort((a,b) => b.timestamp.localeCompare(a.timestamp)), [systemLogs, lifecycleLogs]);
 
   const actions = [...new Set(allLogs.map(log => log.action))];
   const entityTypes = [...new Set(allLogs.map(log => log.entityType))];

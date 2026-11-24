@@ -10,119 +10,69 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { User } from '@/data/models';
 import type { Location } from '@/data/models';
 
+type DepartmentRecord = { id: string; name: string; siteId?: string };
+
 interface DepartmentsPageProps {
   departmentsList: string[];
   onDepartmentsChange: (departments: string[]) => void;
-  departmentRecords?: Array<{ id: string; name: string; siteId?: string }>;
-  onDepartmentRecordsChange?: (departments: Array<{ id: string; name: string; siteId?: string }>) => void;
+  departmentRecords?: DepartmentRecord[];
+  onDepartmentRecordsChange?: (departments: DepartmentRecord[]) => void;
   sitesList?: Location[];
   usersList: User[];
   onUsersChange: (users: User[]) => void;
+  /** The site chosen at the top of the Employees page, or 'all'. This section follows it. */
+  siteId: string;
 }
 
 export function DepartmentsPage({
-  departmentsList,
-  onDepartmentsChange,
   departmentRecords = [],
   onDepartmentRecordsChange,
   sitesList = [],
   usersList,
-  onUsersChange
+  onUsersChange,
+  siteId,
 }: DepartmentsPageProps) {
   const [newDepartment, setNewDepartment] = useState('');
-  const [editingDepartment, setEditingDepartment] = useState<string | null>(null);
-  const [editingDepartmentValue, setEditingDepartmentValue] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
   const [departmentError, setDepartmentError] = useState('');
-  const [viewingMembers, setViewingMembers] = useState<string | null>(null);
-  const [siteId, setSiteId] = useState(sitesList[0]?.id || '');
-  const scopedDepartments = departmentRecords.filter(item => item.siteId === siteId).map(item => item.name);
-  const shownDepartments = departmentRecords.length ? scopedDepartments : departmentsList;
-
-  const normalizeDepartment = (value: string) =>
-    value.trim().replace(/\s+/g, ' ');
+  const [viewing, setViewing] = useState<DepartmentRecord | null>(null);
+  const all = siteId === 'all';
+  const siteName = (id?: string) => sitesList.find(l => l.id === id)?.name || '';
+  const shown = departmentRecords.filter(d => all || d.siteId === siteId).sort((a, b) => a.name.localeCompare(b.name) || siteName(a.siteId).localeCompare(siteName(b.siteId)));
+  const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const normalizeDepartment = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const members = (d: DepartmentRecord) => usersList.filter(u => isEmployee(u) && u.siteId === d.siteId && u.department === d.name);
 
   const handleAddDepartment = () => {
     const department = normalizeDepartment(newDepartment);
     setDepartmentError('');
-
-    if (!department) {
-      setDepartmentError('Enter a department name.');
-      return;
-    }
-
-    if (
-      shownDepartments.some(
-        item => item.toLowerCase() === department.toLowerCase()
-      )
-    ) {
-      setDepartmentError('That department already exists.');
-      return;
-    }
-
-    if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange([...departmentRecords, { id: crypto.randomUUID(), name: department, siteId }]);
-    else onDepartmentsChange([...departmentsList, department].sort((a, b) => a.localeCompare(b)));
+    if (all) { setDepartmentError('Choose a site at the top of the page first. A department belongs to one site.'); return; }
+    if (!department) { setDepartmentError('Enter a department name.'); return; }
+    if (shown.some(item => sameName(item.name, department))) { setDepartmentError('That department already exists.'); return; }
+    onDepartmentRecordsChange?.([...departmentRecords, { id: crypto.randomUUID(), name: department, siteId }]);
     setNewDepartment('');
   };
 
-  const handleStartEditDepartment = (department: string) => {
-    setDepartmentError('');
-    setEditingDepartment(department);
-    setEditingDepartmentValue(department);
-  };
-
   const handleSaveDepartment = () => {
-    if (!editingDepartment) return;
-
-    const department = normalizeDepartment(editingDepartmentValue);
+    const current = departmentRecords.find(d => d.id === editingId);
+    if (!current) return;
+    const department = normalizeDepartment(editingValue);
     setDepartmentError('');
-
-    if (!department) {
-      setDepartmentError('Enter a department name.');
-      return;
-    }
-
-    if (
-      department.toLowerCase() !== editingDepartment.toLowerCase() &&
-      shownDepartments.some(
-        item => item.toLowerCase() === department.toLowerCase()
-      )
-    ) {
-      setDepartmentError('That department already exists.');
-      return;
-    }
-
-    if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange(departmentRecords.map(item => item.siteId === siteId && item.name === editingDepartment ? { ...item, name: department } : item));
-    else onDepartmentsChange(departmentsList.map(item => item === editingDepartment ? department : item).sort((a, b) => a.localeCompare(b)));
-
-    onUsersChange(
-      usersList.map(user =>
-        user.siteId === siteId && user.department === editingDepartment
-          ? { ...user, department }
-          : user
-      )
-    );
-
-    setEditingDepartment(null);
-    setEditingDepartmentValue('');
+    if (!department) { setDepartmentError('Enter a department name.'); return; }
+    if (!sameName(department, current.name) && departmentRecords.some(d => d.siteId === current.siteId && sameName(d.name, department))) { setDepartmentError('That department already exists.'); return; }
+    onDepartmentRecordsChange?.(departmentRecords.map(d => d.id === current.id ? { ...d, name: department } : d));
+    onUsersChange(usersList.map(user => user.siteId === current.siteId && user.department === current.name ? { ...user, department } : user));
+    setEditingId(null);
+    setEditingValue('');
   };
 
-  const handleDeleteDepartment = async (department: string) => {
-    const usedByCount = usersList.filter(
-      user => user.siteId === siteId && user.department === department
-    ).length;
-
+  const handleDeleteDepartment = async (d: DepartmentRecord) => {
+    const usedByCount = usersList.filter(user => user.siteId === d.siteId && user.department === d.name).length;
     setDepartmentError('');
-
-    if (usedByCount > 0) {
-      setDepartmentError(
-        `Move ${usedByCount} user${usedByCount === 1 ? '' : 's'} out of ${department} before deleting it.`
-      );
-      return;
-    }
-
-    if (await confirmDialog({ title: 'Delete department?', message: `Delete ${department}?`, destructive: true })) {
-      if (onDepartmentRecordsChange && siteId) onDepartmentRecordsChange(departmentRecords.filter(item => !(item.siteId === siteId && item.name === department)));
-      else onDepartmentsChange(departmentsList.filter(item => item !== department));
+    if (usedByCount > 0) { setDepartmentError(`Move ${usedByCount} user${usedByCount === 1 ? '' : 's'} out of ${d.name} before deleting it.`); return; }
+    if (await confirmDialog({ title: 'Delete department?', message: `Delete ${d.name}${all && siteName(d.siteId) ? ` at ${siteName(d.siteId)}` : ''}?`, destructive: true })) {
+      onDepartmentRecordsChange?.(departmentRecords.filter(item => item.id !== d.id));
     }
   };
 
@@ -146,109 +96,65 @@ export function DepartmentsPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Departments</CardTitle>
+          <CardTitle>Departments{all ? ' · all sites' : siteName(siteId) ? ` · ${siteName(siteId)}` : ''}</CardTitle>
           <CardDescription>
-            Choose a site, then add, edit or remove the departments used there.
+            {all ? 'Showing every site. To add a department, choose a site in the filter at the top of the page.' : 'Add, edit or remove the departments used at this site. Change the site in the filter at the top of the page.'}
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-[220px_1fr_auto]">
-            <select className="h-10 rounded-md border bg-background px-3 text-sm" value={siteId} onChange={event => { setSiteId(event.target.value); setEditingDepartment(null); setDepartmentError(''); }}><option value="">Select site</option>{sitesList.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <Input
               value={newDepartment}
+              disabled={all}
               onChange={(event) => setNewDepartment(event.target.value)}
-              placeholder="Department name"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  handleAddDepartment();
-                }
-              }}
+              placeholder={all ? 'Choose a site first' : 'Department name'}
+              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleAddDepartment(); } }}
             />
-            <Button type="button" onClick={handleAddDepartment}>
+            <Button type="button" onClick={handleAddDepartment} disabled={all}>
               <Plus className="h-4 w-4 mr-2" />
               Add Department
             </Button>
           </div>
 
-          {departmentError && (
-            <p className="text-sm text-destructive">{departmentError}</p>
-          )}
+          {departmentError && <p className="text-sm text-destructive">{departmentError}</p>}
 
           <div className="rounded-md border border-border">
-            {!siteId ? (<div className="p-6 text-center text-sm text-muted-foreground">Select a site to manage its departments.</div>) : shownDepartments.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                No departments created yet.
-              </div>
+            {shown.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">No departments created yet.</div>
             ) : (
-              shownDepartments.map((department) => {
-                const usedByCount = usersList.filter(
-                  user => user.department === department
-                ).length;
-                const isEditing = editingDepartment === department;
-
+              shown.map((d) => {
+                const count = members(d).length;
+                const isEditing = editingId === d.id;
                 return (
-                  <div
-                    key={department}
-                    className="flex flex-col gap-3 border-b border-border p-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
-                  >
+                  <div key={d.id} className="flex flex-col gap-3 border-b border-border p-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex-1">
                       {isEditing ? (
-                        <Input
-                          value={editingDepartmentValue}
-                          onChange={(event) =>
-                            setEditingDepartmentValue(event.target.value)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              handleSaveDepartment();
-                            }
-                          }}
-                        />
+                        <Input value={editingValue} onChange={(event) => setEditingValue(event.target.value)}
+                          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleSaveDepartment(); } }} />
                       ) : (
                         <>
-                          <p className="font-medium text-foreground">{department}</p>
+                          <p className="font-medium text-foreground">{d.name}</p>
                           <p className="text-sm text-muted-foreground">
-                            {usedByCount} assigned user{usedByCount === 1 ? '' : 's'}
+                            {all && siteName(d.siteId) ? `${siteName(d.siteId)} · ` : ''}{count} assigned employee{count === 1 ? '' : 's'}
                           </p>
                         </>
                       )}
                     </div>
-
                     <div className="flex gap-2">
                       {isEditing ? (
                         <>
                           <Button size="sm" onClick={handleSaveDepartment}>Save</Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setEditingDepartment(null);
-                              setEditingDepartmentValue('');
-                              setDepartmentError('');
-                            }}
-                          >
-                            Cancel
-                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => { setEditingId(null); setEditingValue(''); setDepartmentError(''); }}>Cancel</Button>
                         </>
                       ) : (
                         <>
-                          <Button size="icon-sm" variant="ghost" title={`See who is in ${department}`} aria-label={`Employees in ${department}`} onClick={() => setViewingMembers(department)}><Users className="h-4 w-4" /></Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleStartEditDepartment(department)}
-                          >
+                          <Button size="icon-sm" variant="ghost" title={`See who is in ${d.name}`} aria-label={`Employees in ${d.name}`} onClick={() => setViewing(d)}><Users className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="outline" onClick={() => { setDepartmentError(''); setEditingId(d.id); setEditingValue(d.name); }}>
                             <Edit className="h-4 w-4 mr-1" />
                             Edit
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDeleteDepartment(department)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => handleDeleteDepartment(d)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </>
@@ -261,17 +167,17 @@ export function DepartmentsPage({
           </div>
         </CardContent>
       </Card>
-      <Dialog open={viewingMembers !== null} onOpenChange={o => { if (!o) setViewingMembers(null); }}>
+      <Dialog open={viewing !== null} onOpenChange={o => { if (!o) setViewing(null); }}>
         <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{viewingMembers}</DialogTitle>
-            <DialogDescription>{sitesList.find(l => l.id === siteId)?.name || 'All sites'} · employees in this department</DialogDescription>
+            <DialogTitle>{viewing?.name}</DialogTitle>
+            <DialogDescription>{siteName(viewing?.siteId) || 'No site'} · employees in this department</DialogDescription>
           </DialogHeader>
           {(() => {
-            const members = usersList.filter(u => isEmployee(u) && u.department === viewingMembers && (!siteId || u.siteId === siteId)).sort((a, b) => a.name.localeCompare(b.name));
-            return members.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nobody is in this department yet.</p> : (
+            const list = viewing ? members(viewing).sort((a, b) => a.name.localeCompare(b.name)) : [];
+            return list.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nobody is in this department yet.</p> : (
               <ul className="divide-y rounded-lg border text-sm">
-                {members.map(u => (
+                {list.map(u => (
                   <li key={u.id} className="flex items-center justify-between gap-3 px-3 py-2">
                     <span className="min-w-0 truncate">{u.name}</span>
                     <span className="shrink-0 tabular-nums text-muted-foreground">{u.employeeId || '—'}{u.status !== 'active' ? ' · ' + (u.status === 'left' ? 'left' : 'inactive') : ''}</span>
